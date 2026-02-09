@@ -279,6 +279,44 @@ struct NudgeApp: App {
         let repository = NudgeRepository(modelContext: container.mainContext)
         repository.ingestFromShareExtension()
         repository.resurfaceExpiredSnoozes()
+        
+        // DEBUG: Seed test tasks when using -seedTasks flag (for Live Activity testing)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-seedTasks") {
+            let existing = repository.fetchActiveQueue()
+            if existing.isEmpty {
+                let testItem = NudgeItem(
+                    content: "Call the dentist",
+                    sourceType: .manual,
+                    emoji: "📞",
+                    sortOrder: 0,
+                    priority: .medium
+                )
+                container.mainContext.insert(testItem)
+                
+                let testItem2 = NudgeItem(
+                    content: "Buy groceries for dinner",
+                    sourceType: .manual,
+                    emoji: "🛒",
+                    sortOrder: 1,
+                    priority: .low
+                )
+                container.mainContext.insert(testItem2)
+                
+                let testItem3 = NudgeItem(
+                    content: "Review pull request",
+                    sourceType: .manual,
+                    emoji: "💻",
+                    sortOrder: 2,
+                    priority: .high
+                )
+                container.mainContext.insert(testItem3)
+                
+                try? container.mainContext.save()
+                print("🧪 DEBUG: Seeded 3 test tasks for Live Activity testing")
+            }
+        }
+        #endif
 
         // Initial sync (if engine exists)
         await syncEngine?.syncAll()

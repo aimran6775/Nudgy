@@ -68,6 +68,19 @@ final class AuthSession {
         let method = (try? KeychainService.getString(forKey: Keys.authMethod)) ?? nil
         #if DEBUG
         print("🔐 AuthSession.restoreSession() — stored method: \(method ?? "nil")")
+        
+        // DEBUG bypass: skip auth for simulator testing
+        if ProcessInfo.processInfo.arguments.contains("-skipAuth") {
+            print("🔐 DEBUG: Skipping auth — creating test user")
+            state = .signedIn(UserContext(
+                userID: "debug-test-user",
+                displayName: "Test User",
+                email: "test@nudge.app",
+                authMethod: .email,
+                cloudKitAvailable: false
+            ))
+            return
+        }
         #endif
 
         switch method {

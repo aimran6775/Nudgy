@@ -275,6 +275,13 @@ struct YouView: View {
         .sheet(isPresented: $showPaywall) {
             PaywallView()
         }
+        .sheet(isPresented: $showMemojiPicker) {
+            MemojiPickerView { memojiImage in
+                avatarService.setCustomAvatar(memojiImage)
+            }
+            .presentationDetents([.large])
+        }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
         .onAppear {
             avatarService.loadFromMeCard()
         }

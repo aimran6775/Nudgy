@@ -2,12 +2,9 @@
 //  MemojiPickerView.swift
 //  Nudge
 //
-//  Presents a text input that captures Memoji stickers from the emoji keyboard.
-//  When the user navigates to the Memoji section of the emoji keyboard and
-//  taps a sticker, it's inserted as an NSTextAttachment image into the text view.
-//  We extract that image and pass it back as a UIImage.
-//
-//  Usage: Present as a sheet, bind to an onMemojiSelected closure.
+//  Presents the emoji keyboard so the user can tap a Memoji sticker.
+//  A hidden UITextView captures the sticker image (NSTextAttachment)
+//  and surfaces it as a UIImage for avatar use.
 //
 
 import SwiftUI
@@ -21,61 +18,64 @@ struct MemojiPickerView: View {
     var onMemojiSelected: (UIImage) -> Void
     
     @State private var capturedImage: UIImage?
-    @State private var showHint = true
     
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
                 
-                VStack(spacing: DesignTokens.spacingLG) {
+                VStack(spacing: 0) {
                     Spacer()
                     
                     // Preview of selected Memoji
                     if let image = capturedImage {
-                        Image(uiImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 120, height: 120)
-                            .clipShape(Circle())
-                            .overlay {
-                                Circle()
-                                    .strokeBorder(DesignTokens.accentActive.opacity(0.4), lineWidth: 2)
-                            }
-                            .transition(.scale.combined(with: .opacity))
-                        
-                        Text(String(localized: "Looking good! 🐧"))
-                            .font(AppTheme.body)
-                            .foregroundStyle(DesignTokens.textSecondary)
+                        VStack(spacing: DesignTokens.spacingMD) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 140, height: 140)
+                                .clipShape(Circle())
+                                .overlay {
+                                    Circle()
+                                        .strokeBorder(DesignTokens.accentActive.opacity(0.5), lineWidth: 2.5)
+                                }
+                                .shadow(color: DesignTokens.accentActive.opacity(0.25), radius: 16, y: 4)
+                                .transition(.scale.combined(with: .opacity))
+                            
+                            Text(String(localized: "Looking good! 🐧"))
+                                .font(AppTheme.body)
+                                .foregroundStyle(DesignTokens.textSecondary)
+                        }
                     } else {
-                        // Hint illustration
+                        // Hint
                         VStack(spacing: DesignTokens.spacingMD) {
                             Image(systemName: "face.smiling")
-                                .font(.system(size: 56))
-                                .foregroundStyle(DesignTokens.accentActive.opacity(0.4))
+                                .font(.system(size: 60))
+                                .foregroundStyle(DesignTokens.accentActive.opacity(0.35))
                             
-                            Text(String(localized: "Tap a Memoji sticker below"))
+                            Text(String(localized: "Pick a Memoji sticker"))
                                 .font(AppTheme.headline)
                                 .foregroundStyle(DesignTokens.textPrimary)
                             
-                            Text(String(localized: "Open the emoji keyboard → swipe to Memoji stickers → tap the one you want"))
+                            Text(String(localized: "Swipe to the Memoji section on the keyboard below and tap the sticker you want"))
                                 .font(AppTheme.caption)
                                 .foregroundStyle(DesignTokens.textTertiary)
                                 .multilineTextAlignment(.center)
-                                .padding(.horizontal, DesignTokens.spacingXXL)
+                                .padding(.horizontal, 40)
                         }
                     }
                     
                     Spacer()
                     
-                    // Hidden text view that captures the Memoji sticker
+                    // Invisible capture field — the keyboard attaches to this
                     MemojiCaptureField { image in
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                             capturedImage = image
                         }
                     }
-                    .frame(height: 44)
-                    .padding(.horizontal, DesignTokens.spacingLG)
+                    .frame(width: 1, height: 1)
+                    .opacity(0.01)
+                    .allowsHitTesting(false)
                 }
             }
             .navigationTitle(String(localized: "Choose Memoji"))
@@ -106,10 +106,11 @@ struct MemojiPickerView: View {
     }
 }
 
-// MARK: - UIKit Text View for Memoji Capture
+// MARK: - UIKit Invisible Text View for Memoji Capture
 
-/// A UITextView wrapped in UIViewRepresentable that auto-shows the emoji keyboard
-/// and captures any Memoji sticker inserted as an NSTextAttachment image.
+/// An invisible UITextView that auto-becomes first responder to show the keyboard.
+/// When the user taps a Memoji sticker, it arrives as an NSTextAttachment image.
+/// We extract it, pass it up, and clear the text view for the next pick.
 struct MemojiCaptureField: UIViewRepresentable {
     
     var onImageCaptured: (UIImage) -> Void
@@ -120,28 +121,21 @@ struct MemojiCaptureField: UIViewRepresentable {
         textView.allowsEditingTextAttributes = true
         textView.font = UIFont.systemFont(ofSize: 48)
         textView.textAlignment = .center
-        textView.backgroundColor = UIColor(white: 1, alpha: 0.05)
-        textView.layer.cornerRadius = 12
-        textView.textColor = .white
-        textView.tintColor = UIColor(DesignTokens.accentActive)
+        textView.backgroundColor = .clear
+        textView.textColor = .clear
+        textView.tintColor = .clear
         textView.keyboardAppearance = .dark
-        textView.returnKeyType = .done
+        textView.autocorrectionType = .no
+        textView.spellCheckingType = .no
+        textView.autocapitalizationType = .none
+        textView.isScrollEnabled = false
         
-        // Placeholder
-        textView.text = ""
-        let placeholder = NSAttributedString(
-            string: String(localized: "Tap here, then pick a Memoji"),
-            attributes: [
-                .foregroundColor: UIColor(white: 1, alpha: 0.3),
-                .font: UIFont.systemFont(ofSize: 15)
-            ]
-        )
-        // Store placeholder for coordinator
-        context.coordinator.placeholder = placeholder
         context.coordinator.textView = textView
         
-        // Show placeholder initially
-        textView.attributedText = placeholder
+        // Auto-show keyboard after a brief delay (sheet animation)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            textView.becomeFirstResponder()
+        }
         
         return textView
     }
@@ -154,55 +148,39 @@ struct MemojiCaptureField: UIViewRepresentable {
     
     class Coordinator: NSObject, UITextViewDelegate {
         var onImageCaptured: (UIImage) -> Void
-        var placeholder: NSAttributedString?
         weak var textView: UITextView?
-        private var isShowingPlaceholder = true
         
         init(onImageCaptured: @escaping (UIImage) -> Void) {
             self.onImageCaptured = onImageCaptured
         }
         
-        func textViewDidBeginEditing(_ textView: UITextView) {
-            if isShowingPlaceholder {
-                textView.text = ""
-                textView.textColor = .white
-                isShowingPlaceholder = false
-            }
-        }
-        
-        func textViewDidEndEditing(_ textView: UITextView) {
-            if textView.text.isEmpty, let placeholder {
-                textView.attributedText = placeholder
-                isShowingPlaceholder = true
-            }
-        }
-        
         func textViewDidChange(_ textView: UITextView) {
-            // Check for image attachments in the attributed text
+            var found = false
+            
+            // Check for image attachments (Memoji stickers arrive as NSTextAttachment)
             textView.attributedText.enumerateAttribute(
                 .attachment,
                 in: NSRange(location: 0, length: textView.attributedText.length),
                 options: []
             ) { value, _, stop in
                 if let attachment = value as? NSTextAttachment {
-                    // Try to get the image from the attachment
                     var image: UIImage?
                     
                     if let attachmentImage = attachment.image {
                         image = attachmentImage
                     } else if let data = attachment.fileWrapper?.regularFileContents {
                         image = UIImage(data: data)
-                    } else if let cgImage = attachment.image(
+                    } else if let imgFromBounds = attachment.image(
                         forBounds: CGRect(origin: .zero, size: CGSize(width: 512, height: 512)),
                         textContainer: nil,
                         characterIndex: 0
                     ) {
-                        image = cgImage
+                        image = imgFromBounds
                     }
                     
                     if let image {
-                        // Render at a nice size for avatar use
-                        let rendered = self.renderAtSize(image, size: CGSize(width: 256, height: 256))
+                        let rendered = self.renderAtSize(image, size: CGSize(width: 512, height: 512))
+                        found = true
                         DispatchQueue.main.async {
                             self.onImageCaptured(rendered)
                         }
@@ -211,24 +189,26 @@ struct MemojiCaptureField: UIViewRepresentable {
                 }
             }
             
-            // Also check UIPasteboard for recently pasted sticker images
-            if let pasteImage = UIPasteboard.general.image {
-                let rendered = renderAtSize(pasteImage, size: CGSize(width: 256, height: 256))
-                DispatchQueue.main.async {
-                    self.onImageCaptured(rendered)
+            // Clear the text view after capture so it's ready for another pick
+            if found {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    textView.attributedText = NSAttributedString(string: "")
                 }
             }
         }
         
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
-            if text == "\n" {
-                textView.resignFirstResponder()
-                return false
+            // Block return key — don't dismiss keyboard
+            if text == "\n" { return false }
+            // Block plain text input — only allow rich content (stickers)
+            if !text.isEmpty {
+                // Allow if it might be an emoji (single character)
+                // Block multi-character text strings (typing)
+                if text.count > 2 { return false }
             }
             return true
         }
         
-        /// Render an image at a specific size for clean avatar display.
         private func renderAtSize(_ image: UIImage, size: CGSize) -> UIImage {
             let renderer = UIGraphicsImageRenderer(size: size)
             return renderer.image { _ in

@@ -61,7 +61,7 @@ struct NudgyHomeView: View {
 
                 Spacer()
 
-                // ★ Nudgy — the whole point
+                // ★ Nudgy — the whole point, positioned on the ice cliff
                 nudgyCharacter
 
                 // Listening indicator (when mic is active)
@@ -82,7 +82,9 @@ struct NudgyHomeView: View {
                         .transition(.opacity)
                 }
 
+                // Offset to seat Nudgy on the ice cliff platform
                 Spacer()
+                    .frame(maxHeight: 20)
 
                 // Bottom action buttons: glassmorphic chat + voice
                 bottomActionButtons

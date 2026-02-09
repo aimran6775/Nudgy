@@ -395,6 +395,7 @@
 		63B9572D0E925E048CE38794 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NudgeWidgetExtension/NudgeWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = XG936GFSKZ;
@@ -427,6 +428,7 @@
 		64AD19A7445C5AAF962820B6 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NudgeWidgetExtension/NudgeWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = XG936GFSKZ;
