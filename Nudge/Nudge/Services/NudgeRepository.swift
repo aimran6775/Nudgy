@@ -262,6 +262,7 @@ final class NudgeRepository {
         item.status = .active
         item.completedAt = nil
         item.sortOrder = restoreSortOrder
+        item.updatedAt = Date()
         save()
     }
     
@@ -278,6 +279,7 @@ final class NudgeRepository {
         item.aiDraft = draft
         item.aiDraftSubject = subject
         item.draftGeneratedAt = Date()
+        item.updatedAt = Date()
         save()
     }
     
@@ -356,6 +358,7 @@ final class NudgeRepository {
     private func save() {
         do {
             try modelContext.save()
+            NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
         } catch {
             print("❌ SwiftData save failed: \(error)")
         }
@@ -377,6 +380,6 @@ struct ShareExtensionPayload: Codable {
 // MARK: - App Group Constants
 
 enum AppGroupID {
-    static let suiteName = "group.com.nudge.app"
+    static let suiteName = "group.com.tarsitgroup.nudge"
     static let pendingItemsKey = "pendingShareItems"
 }

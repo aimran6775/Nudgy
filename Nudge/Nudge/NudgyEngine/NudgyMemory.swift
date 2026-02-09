@@ -12,6 +12,10 @@
 
 import Foundation
 
+extension Notification.Name {
+    static let nudgyMemoryChanged = Notification.Name("nudgyMemoryChanged")
+}
+
 // MARK: - Memory Models
 
 /// A single memorable fact Nudgy has learned about the user.
@@ -140,22 +144,47 @@ final class NudgyMemory {
     
     private(set) var store: NudgyMemoryStore
     
-    private let fileURL: URL
+    private var fileURL: URL
+    private var activeUserID: String?
     
     private init() {
         // Store in App Group for share extension access
         let container = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: NudgyConfig.Memory.appGroup
         ) ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        
-        self.fileURL = container.appendingPathComponent(NudgyConfig.Memory.archiveFileName)
+
+        let url = container.appendingPathComponent(NudgyConfig.Memory.archiveFileName)
+        self.fileURL = url
         
         // Load existing memory
-        if let data = try? Data(contentsOf: fileURL),
+        if let data = try? Data(contentsOf: url),
            let loaded = try? JSONDecoder().decode(NudgyMemoryStore.self, from: data) {
             self.store = loaded
         } else {
             self.store = NudgyMemoryStore()
+        }
+    }
+
+    /// Switch memory to a specific signed-in user.
+    /// Call on sign-in and sign-out so each account gets isolated memory.
+    func setActiveUser(id: String?) {
+        let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: NudgyConfig.Memory.appGroup
+        ) ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+
+        activeUserID = id
+
+        if let id, !id.isEmpty {
+            fileURL = container.appendingPathComponent("nudgy_memory_\(id).json")
+        } else {
+            fileURL = container.appendingPathComponent(NudgyConfig.Memory.archiveFileName)
+        }
+
+        if let data = try? Data(contentsOf: fileURL),
+           let loaded = try? JSONDecoder().decode(NudgyMemoryStore.self, from: data) {
+            store = loaded
+        } else {
+            store = NudgyMemoryStore()
         }
     }
     
@@ -252,6 +281,7 @@ final class NudgyMemory {
         do {
             let data = try JSONEncoder().encode(store)
             try data.write(to: fileURL, options: .atomic)
+            NotificationCenter.default.post(name: .nudgyMemoryChanged, object: nil)
         } catch {
             #if DEBUG
             print("⚠️ NudgyMemory: Failed to save: \(error)")
@@ -268,5 +298,20 @@ final class NudgyMemory {
     /// Export memory as JSON data (for debugging/backup).
     func exportJSON() -> Data? {
         try? JSONEncoder().encode(store)
+    }
+
+    /// Replace the current memory store (used when hydrating from CloudKit).
+    func replaceStore(_ newStore: NudgyMemoryStore) {
+        store = newStore
+        // Persist immediately so local cache matches what we just loaded.
+        do {
+            let data = try JSONEncoder().encode(store)
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            #if DEBUG
+            print("⚠️ NudgyMemory: Failed to replace store: \(error)")
+            #endif
+        }
+        NotificationCenter.default.post(name: .nudgyMemoryChanged, object: nil)
     }
 }

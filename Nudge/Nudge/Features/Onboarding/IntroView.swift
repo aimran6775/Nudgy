@@ -1,40 +1,36 @@
 //
-//  OnboardingView.swift
+//  IntroView.swift
 //  Nudge
 //
-//  Post-auth glassmorphic onboarding — Nudgy teaches you the ropes.
-//  Page 1: Brain dump with Nudgy
-//  Page 2: One card at a time
-//  Page 3: Name + get started
+//  Glassmorphic intro pages — shown once before auth.
+//  Uses Nudgy (PenguinSceneView) as the hero, not emojis.
 //
 
 import SwiftUI
 
-struct OnboardingView: View {
+struct IntroView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var currentPage = 0
-    @State private var firstName: String = ""
-    @FocusState private var nameFieldFocused: Bool
 
-    private let pages: [OnboardingPage] = [
-        OnboardingPage(
+    private let pages: [IntroPage] = [
+        IntroPage(
+            mascot: .waving,
+            headline: String(localized: "Meet Nudgy"),
+            body: String(localized: "Your tiny penguin companion who turns brain chaos into calm, one nudge at a time."),
+            gradient: [Color(hex: "0A84FF"), Color(hex: "5E5CE6")]
+        ),
+        IntroPage(
             mascot: .listening,
-            title: String(localized: "Talk, don't type"),
-            body: String(localized: "Tap the mic and brain dump everything. Nudgy turns your ramble into neat task cards."),
+            headline: String(localized: "Brain dump, not burnout"),
+            body: String(localized: "Tap the mic and say everything on your mind. Nudgy sorts it into bite-sized tasks for you."),
             gradient: [Color(hex: "BF5AF2"), Color(hex: "FF375F")]
         ),
-        OnboardingPage(
+        IntroPage(
             mascot: .happy,
-            title: String(localized: "One card at a time"),
-            body: String(localized: "No overwhelming lists. Handle one task, swipe it done, see the next. Simple as that."),
+            headline: String(localized: "One thing at a time"),
+            body: String(localized: "No endless lists. Just one card. Handle it. Move on. That's it."),
             gradient: [Color(hex: "30D158"), Color(hex: "0A84FF")]
-        ),
-        OnboardingPage(
-            mascot: .celebrating,
-            title: String(localized: "Ready to roll!"),
-            body: String(localized: "Nudgy's here whenever you need a nudge. Let's get your first brain dump going."),
-            gradient: [Color(hex: "0A84FF"), Color(hex: "5E5CE6")]
         ),
     ]
 
@@ -54,7 +50,7 @@ struct OnboardingView: View {
                     Spacer()
                     if currentPage < pages.count - 1 {
                         Button {
-                            completeOnboarding()
+                            settings.hasSeenIntro = true
                         } label: {
                             Text(String(localized: "Skip"))
                                 .font(.system(size: 15, weight: .medium, design: .rounded))
@@ -69,7 +65,7 @@ struct OnboardingView: View {
                 // Pages
                 TabView(selection: $currentPage) {
                     ForEach(pages.indices, id: \.self) { i in
-                        pageView(pages[i], index: i)
+                        introPageView(pages[i], index: i)
                             .tag(i)
                     }
                 }
@@ -98,86 +94,53 @@ struct OnboardingView: View {
                     )
                 )
                 .frame(width: 600, height: 600)
-                .offset(x: -60, y: -220)
+                .offset(x: -50, y: -200)
                 .blur(radius: 80)
 
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [pages[currentPage].gradient[1].opacity(0.15), .clear],
-                        center: .center, startRadius: 0, endRadius: 220
+                        center: .center, startRadius: 0, endRadius: 250
                     )
                 )
-                .frame(width: 450, height: 450)
-                .offset(x: 100, y: 320)
+                .frame(width: 500, height: 500)
+                .offset(x: 100, y: 300)
                 .blur(radius: 60)
         }
         .animation(.easeInOut(duration: 0.8), value: currentPage)
     }
 
-    // MARK: - Page View
+    // MARK: - Page
 
-    private func pageView(_ page: OnboardingPage, index: Int) -> some View {
+    private func introPageView(_ page: IntroPage, index: Int) -> some View {
         VStack(spacing: DesignTokens.spacingXL) {
             Spacer()
 
-            // Nudgy penguin
+            // Nudgy penguin hero
             PenguinSceneView(
                 size: .large,
                 expressionOverride: page.mascot
             )
-            .scaleEffect(currentPage == index ? 1 : 0.75)
-            .opacity(currentPage == index ? 1 : 0)
+            .scaleEffect(currentPage == index ? 1.0 : 0.7)
+            .opacity(currentPage == index ? 1.0 : 0.0)
             .animation(springAnimation, value: currentPage)
 
-            // Glass card with text
+            // Glass card
             VStack(spacing: DesignTokens.spacingMD) {
-                Text(page.title)
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                Text(page.headline)
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
 
                 Text(page.body)
-                    .font(.system(size: 15, weight: .regular, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .font(.system(size: 16, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
-
-                // Name field on last page
-                if index == pages.count - 1 {
-                    VStack(spacing: 6) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "person.fill")
-                                .foregroundStyle(.white.opacity(0.35))
-                                .frame(width: 20)
-                            TextField(String(localized: "Your first name (optional)"), text: $firstName)
-                                .font(.system(size: 15, weight: .regular, design: .rounded))
-                                .foregroundStyle(.white)
-                                .focused($nameFieldFocused)
-                                .submitLabel(.done)
-                                .textContentType(.givenName)
-                                .autocorrectionDisabled()
-                        }
-                        .padding(.horizontal, 14)
-                        .frame(height: 50)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(.white.opacity(0.06))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(.white.opacity(0.1), lineWidth: 0.5)
-                        )
-
-                        Text(String(localized: "Used to sign off AI-drafted messages"))
-                            .font(.system(size: 12, weight: .regular, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.3))
-                    }
-                    .padding(.top, 4)
-                }
             }
             .padding(DesignTokens.spacingXL)
             .frame(maxWidth: .infinity)
-            .background(glassCard)
+            .background(glassBackground)
             .padding(.horizontal, DesignTokens.spacingLG)
 
             Spacer()
@@ -187,18 +150,18 @@ struct OnboardingView: View {
 
     // MARK: - Glass
 
-    private var glassCard: some View {
+    private var glassBackground: some View {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .fill(.ultraThinMaterial.opacity(0.4))
+            .fill(.ultraThinMaterial.opacity(0.5))
             .background(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
+                    .fill(Color.white.opacity(0.05))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .stroke(
                         LinearGradient(
-                            colors: [.white.opacity(0.2), .white.opacity(0.04)],
+                            colors: [.white.opacity(0.25), .white.opacity(0.05)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -211,22 +174,23 @@ struct OnboardingView: View {
 
     private var bottomControls: some View {
         VStack(spacing: DesignTokens.spacingLG) {
-            // Pill dots
+            // Page dots
             HStack(spacing: 8) {
                 ForEach(0..<pages.count, id: \.self) { i in
                     Capsule()
-                        .fill(i == currentPage ? .white : .white.opacity(0.25))
+                        .fill(i == currentPage ? .white : .white.opacity(0.3))
                         .frame(width: i == currentPage ? 24 : 8, height: 8)
                         .animation(springAnimation, value: currentPage)
                 }
             }
 
             if currentPage == pages.count - 1 {
-                // Get Started
                 Button {
-                    completeOnboarding()
+                    withAnimation(springAnimation) {
+                        settings.hasSeenIntro = true
+                    }
                 } label: {
-                    Text(String(localized: "Let's go! 🐧"))
+                    Text(String(localized: "Get Started"))
                         .font(.system(size: 17, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -241,10 +205,10 @@ struct OnboardingView: View {
                                     )
                                 )
                         )
-                        .shadow(color: pages[currentPage].gradient[0].opacity(0.35), radius: 20, y: 8)
+                        .shadow(color: pages[currentPage].gradient[0].opacity(0.4), radius: 20, y: 8)
                 }
                 .padding(.horizontal, DesignTokens.spacingXL)
-                .transition(.scale(scale: 0.85).combined(with: .opacity))
+                .transition(.scale(scale: 0.8).combined(with: .opacity))
             } else {
                 Button {
                     withAnimation(springAnimation) { currentPage += 1 }
@@ -256,42 +220,31 @@ struct OnboardingView: View {
                         .frame(height: 56)
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(.white.opacity(0.1))
+                                .fill(.white.opacity(0.12))
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(.white.opacity(0.15), lineWidth: 0.5)
+                                .stroke(.white.opacity(0.2), lineWidth: 0.5)
                         )
                 }
                 .padding(.horizontal, DesignTokens.spacingXL)
             }
         }
-    }
-
-    // MARK: - Actions
-
-    private func completeOnboarding() {
-        let trimmed = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            settings.userName = trimmed
-        }
-        withAnimation(springAnimation) {
-            settings.hasCompletedOnboarding = true
-        }
+        .animation(springAnimation, value: currentPage)
     }
 }
 
 // MARK: - Model
 
-private struct OnboardingPage {
+private struct IntroPage {
     let mascot: PenguinExpression
-    let title: String
+    let headline: String
     let body: String
     let gradient: [Color]
 }
 
 #Preview {
-    OnboardingView()
+    IntroView()
         .environment(AppSettings())
         .environment(PenguinState())
 }

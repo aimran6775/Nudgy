@@ -15,6 +15,9 @@
 
 import SwiftUI
 import SwiftData
+import os.log
+
+private let nudgesLog = Logger(subsystem: "com.tarsitgroup.nudge", category: "NudgesView")
 
 struct NudgesView: View {
 
@@ -54,6 +57,9 @@ struct NudgesView: View {
     @State private var undoPreviousSortOrder: Int = 0
     @State private var showUndoToast = false
     @State private var undoTimerTask: Task<Void, Never>?
+    
+    // Live Activity prompt
+    @State private var showLiveActivityPrompt = false
 
     var body: some View {
         NavigationStack {
@@ -98,16 +104,20 @@ struct NudgesView: View {
             refreshData()
             triggerDraftGeneration()
             generateAIInsight()
+            syncLiveActivity()
+            promptLiveActivityIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             repository?.resurfaceExpiredSnoozes()
             refreshData()
             triggerDraftGeneration()
             generateAIInsight()
+            syncLiveActivity()
         }
         .onReceive(NotificationCenter.default.publisher(for: .nudgeDataChanged)) { _ in
             refreshData()
             triggerDraftGeneration()
+            syncLiveActivity()
         }
         .onReceive(NotificationCenter.default.publisher(for: .nudgeComposeMessage)) { notification in
             if let recipient = notification.userInfo?["recipient"] as? String,
@@ -171,11 +181,19 @@ struct NudgesView: View {
         ScrollView {
             LazyVStack(spacing: DesignTokens.spacingLG) {
                 
+                // Live Activity opt-in prompt
+                if showLiveActivityPrompt && !settings.liveActivityEnabled {
+                    liveActivityPromptBanner
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                
                 // AI Insight banner — contextual advice from Nudgy
                 if let insight = aiInsight, !insight.isEmpty {
                     HStack(spacing: DesignTokens.spacingSM) {
-                        Text("🐧")
-                            .font(.system(size: 18))
+                        Image(systemName: "bird.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(DesignTokens.accentActive)
+                            .symbolRenderingMode(.hierarchical)
                         
                         Text(insight)
                             .font(AppTheme.footnote)
@@ -441,6 +459,7 @@ struct NudgesView: View {
 
         refreshData()
         NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
+        syncLiveActivity()
     }
 
     private func undoLastDone() {
@@ -451,6 +470,7 @@ struct NudgesView: View {
         HapticService.shared.prepare()
         refreshData()
         NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
+        syncLiveActivity()
     }
 
     private func dismissUndoToast() {
@@ -586,6 +606,154 @@ struct NudgesView: View {
                 aiInsight = line
             }
             isGeneratingInsight = false
+        }
+    }
+    
+    // MARK: - Live Activity Sync
+    
+    /// Sync the Live Activity with current Nudges data directly from this view.
+    private func syncLiveActivity() {
+        nudgesLog.info("syncLiveActivity called — liveActivityEnabled: \(self.settings.liveActivityEnabled)")
+        guard settings.liveActivityEnabled else { return }
+        
+        let allActive = readyToActItems + activeItems
+        nudgesLog.info("syncLiveActivity — allActive count: \(allActive.count), readyToAct: \(self.readyToActItems.count), active: \(self.activeItems.count)")
+        guard let topItem = allActive.first else {
+            Task { await LiveActivityManager.shared.endIfEmpty() }
+            return
+        }
+        
+        let emoji = topItem.emoji ?? "📌"
+        let accentHex: String
+        switch topItem.accentStatus {
+        case .stale:    accentHex = "FFB800"
+        case .overdue:  accentHex = "FF453A"
+        case .complete: accentHex = "30D158"
+        case .active:   accentHex = "0A84FF"
+        }
+        
+        if LiveActivityManager.shared.isRunning {
+            Task {
+                await LiveActivityManager.shared.update(
+                    taskContent: topItem.content,
+                    taskEmoji: emoji,
+                    queuePosition: 1,
+                    queueTotal: allActive.count,
+                    accentHex: accentHex,
+                    taskID: topItem.id.uuidString
+                )
+            }
+        } else {
+            LiveActivityManager.shared.start(
+                taskContent: topItem.content,
+                taskEmoji: emoji,
+                queuePosition: 1,
+                queueTotal: allActive.count,
+                accentHex: accentHex,
+                taskID: topItem.id.uuidString
+            )
+        }
+    }
+    
+    /// Prompt user to enable Live Activity if they haven't been asked and have active tasks.
+    private func promptLiveActivityIfNeeded() {
+        let totalActive = readyToActItems.count + activeItems.count
+        guard totalActive >= 1,
+              !settings.liveActivityEnabled,
+              !settings.liveActivityPromptShown else {
+            showLiveActivityPrompt = false
+            return
+        }
+        withAnimation(.easeOut(duration: 0.3)) {
+            showLiveActivityPrompt = true
+        }
+    }
+    
+    /// Live Activity opt-in banner
+    private var liveActivityPromptBanner: some View {
+        VStack(spacing: DesignTokens.spacingSM) {
+            HStack(spacing: DesignTokens.spacingSM) {
+                Image(systemName: "platter.filled.top.and.arrow.up.iphone")
+                    .font(.system(size: 22))
+                    .foregroundStyle(DesignTokens.accentActive)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(localized: "Live Activity"))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                    
+                    Text(String(localized: "See your current task on Lock Screen & Dynamic Island"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(DesignTokens.textSecondary)
+                        .lineLimit(2)
+                }
+                
+                Spacer()
+                
+                Button {
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        showLiveActivityPrompt = false
+                    }
+                    settings.liveActivityPromptShown = true
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(DesignTokens.textTertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            
+            HStack(spacing: DesignTokens.spacingSM) {
+                Button {
+                    settings.liveActivityEnabled = true
+                    settings.liveActivityPromptShown = true
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        showLiveActivityPrompt = false
+                    }
+                    syncLiveActivity()
+                } label: {
+                    Text(String(localized: "Enable"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, DesignTokens.spacingSM)
+                        .background(
+                            Capsule().fill(DesignTokens.accentActive)
+                        )
+                }
+                .buttonStyle(.plain)
+                
+                Button {
+                    settings.liveActivityPromptShown = true
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        showLiveActivityPrompt = false
+                    }
+                } label: {
+                    Text(String(localized: "Not now"))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(DesignTokens.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, DesignTokens.spacingSM)
+                        .background(
+                            Capsule()
+                                .fill(Color.white.opacity(0.06))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(DesignTokens.spacingMD)
+        .background {
+            RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
+                        .fill(DesignTokens.accentActive.opacity(0.04))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
+                        .strokeBorder(DesignTokens.accentActive.opacity(0.15), lineWidth: 0.5)
+                )
         }
     }
 }

@@ -9,6 +9,9 @@
 import ActivityKit
 import SwiftUI
 import WidgetKit
+import os.log
+
+private let liveActivityLog = Logger(subsystem: "com.tarsitgroup.nudge", category: "LiveActivity")
 
 // MARK: - Activity Attributes
 
@@ -82,10 +85,10 @@ final class LiveActivityManager {
         accentHex: String,
         taskID: String = ""
     ) {
+        liveActivityLog.info("start() called — task: \(taskContent), taskID: \(taskID)")
+        liveActivityLog.info("areActivitiesEnabled: \(ActivityAuthorizationInfo().areActivitiesEnabled)")
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            #if DEBUG
-            print("⚠️ Live Activities not enabled")
-            #endif
+            liveActivityLog.warning("Live Activities not enabled by system")
             return
         }
         
@@ -114,10 +117,9 @@ final class LiveActivityManager {
                 pushType: nil
             )
             isRunning = true
+            liveActivityLog.info("Live Activity started! ID: \(self.currentActivity?.id ?? "nil")")
         } catch {
-            #if DEBUG
-            print("❌ Failed to start Live Activity: \(error)")
-            #endif
+            liveActivityLog.error("Failed to start Live Activity: \(error)")
         }
     }
     

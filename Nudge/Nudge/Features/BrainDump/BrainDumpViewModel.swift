@@ -137,35 +137,33 @@ final class BrainDumpViewModel {
     
     @MainActor
     private func processTranscript(_ transcript: String) async {
-        do {
-            // Route through NudgyEngine for OpenAI-powered task extraction
-            let extractedTasks = await NudgyEngine.shared.splitBrainDump(transcript: transcript)
-            
-            // Convert ExtractedTask to SplitTask for backward compat with .results phase
-            let splitTasks = extractedTasks.map { task in
-                SplitTask(
-                    task: task.content,
-                    emoji: task.emoji,
-                    action: task.actionType,
-                    contact: task.contactName,
-                    actionTarget: task.actionTarget
-                )
-            }
-            
-            editableTasks = extractedTasks.map { task in
-                EditableTask(
-                    content: task.content,
-                    emoji: task.emoji.isEmpty ? nil : task.emoji,
-                    actionType: task.mappedActionType,
-                    actionTarget: task.actionTarget.isEmpty ? nil : task.actionTarget,
-                    contactName: task.contactName.isEmpty ? nil : task.contactName,
-                    priority: task.mappedPriority,
-                    dueDate: task.parsedDueDate
-                )
-            }
-            
-            phase = .results(splitTasks)
-        } catch {
+        // Route through NudgyEngine for OpenAI-powered task extraction
+        let extractedTasks = await NudgyEngine.shared.splitBrainDump(transcript: transcript)
+        
+        // Convert ExtractedTask to SplitTask for backward compat with .results phase
+        let splitTasks = extractedTasks.map { task in
+            SplitTask(
+                task: task.content,
+                emoji: task.emoji,
+                action: task.actionType,
+                contact: task.contactName,
+                actionTarget: task.actionTarget
+            )
+        }
+        
+        editableTasks = extractedTasks.map { task in
+            EditableTask(
+                content: task.content,
+                emoji: task.emoji.isEmpty ? nil : task.emoji,
+                actionType: task.mappedActionType,
+                actionTarget: task.actionTarget.isEmpty ? nil : task.actionTarget,
+                contactName: task.contactName.isEmpty ? nil : task.contactName,
+                priority: task.mappedPriority,
+                dueDate: task.parsedDueDate
+            )
+        }
+        
+        if editableTasks.isEmpty {
             // Offline or API error — save as single task
             editableTasks = [
                 EditableTask(
@@ -181,6 +179,8 @@ final class BrainDumpViewModel {
             phase = .results([
                 SplitTask(task: transcript, emoji: "📝", action: "", contact: "", actionTarget: "")
             ])
+        } else {
+            phase = .results(splitTasks)
         }
     }
     

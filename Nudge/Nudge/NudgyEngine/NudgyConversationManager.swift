@@ -44,7 +44,58 @@ final class NudgyConversationManager {
     /// In-flight generation task (for cancellation).
     private var generationTask: Task<Void, Never>?
     
+    /// Whether the current conversation is in brain dump mode.
+    /// Brain dump mode uses a specialized system prompt that instructs the LLM
+    /// to actively extract actionable tasks from the user's free-form speech.
+    private(set) var isBrainDumpMode = false
+    
+    /// Accumulated transcript of all user messages in this conversation (for end-of-conversation sweep).
+    private(set) var fullTranscript: [String] = []
+    
     private init() {}
+    
+    // MARK: - Brain Dump Mode
+    
+    /// Start a brain dump conversation — uses the specialized brain dump system prompt.
+    func startBrainDumpConversation(modelContext: ModelContext) {
+        // End any existing conversation
+        if conversationStore.isActive {
+            clearConversation()
+        }
+        
+        isBrainDumpMode = true
+        fullTranscript = []
+        
+        let memory = NudgyMemory.shared
+        let memoryContext = NudgyConfig.Features.memoryEnabled ? memory.memoryContext() : ""
+        
+        let hour = Calendar.current.component(.hour, from: .now)
+        let timeOfDay = switch hour {
+        case 5..<12: "morning"
+        case 12..<17: "afternoon"
+        case 17..<21: "evening"
+        default: "late night"
+        }
+        let timeContext = "It's \(timeOfDay), \(Date.now.formatted(.dateTime.weekday(.wide).month().day()))"
+        
+        // Build task context to avoid duplicates
+        let repo = NudgeRepository(modelContext: modelContext)
+        let activeTasks = repo.fetchActiveQueue()
+        let taskContext = activeTasks.prefix(10).map { task in
+            "- \(task.emoji ?? "📝") \(task.content)"
+        }.joined(separator: "\n")
+        
+        let systemPrompt = NudgyPersonality.brainDumpConversationPrompt(
+            memoryContext: memoryContext,
+            taskContext: taskContext,
+            timeContext: timeContext
+        )
+        
+        conversationStore.startConversation(systemPrompt: systemPrompt)
+        
+        print("🧠🎙️ Brain dump conversation started. Active tasks: \(activeTasks.count), Memory facts: \(NudgyMemory.shared.store.facts.count)")
+        print("🧠🎙️ System prompt length: \(systemPrompt.count) chars")
+    }
     
     // MARK: - Conversation Lifecycle
     
@@ -82,6 +133,7 @@ final class NudgyConversationManager {
     ) async -> ConversationResponse {
         ensureConversationActive()
         conversationStore.addUserMessage(userMessage)
+        if isBrainDumpMode { fullTranscript.append(userMessage) }
         isGenerating = true
         
         defer { isGenerating = false }
@@ -91,6 +143,11 @@ final class NudgyConversationManager {
             var allSideEffects: [ToolExecutionResult.ToolSideEffect] = []
             var totalToolCalls = 0
             
+            // In brain dump mode, force tool calling on first iteration
+            let tools = isBrainDumpMode
+                ? NudgyToolDefinitions.brainDumpTools
+                : NudgyToolDefinitions.allTools
+            
             // Tool call loop (max 3 iterations to prevent runaway)
             var iterations = 0
             while iterations < 3 {
@@ -98,7 +155,8 @@ final class NudgyConversationManager {
                 
                 let response = try await NudgyLLMService.shared.chatCompletion(
                     messages: conversationStore.apiMessages(),
-                    tools: NudgyToolDefinitions.allTools
+                    tools: tools,
+                    toolChoice: iterations == 1 && isBrainDumpMode ? "required" : "auto"
                 )
                 
                 if response.hasToolCalls {
@@ -115,14 +173,14 @@ final class NudgyConversationManager {
                     for result in results {
                         conversationStore.addToolMessage(result.result, toolCallId: result.toolCallId)
                         allSideEffects.append(contentsOf: result.sideEffects)
-                    }
-                    
-                    // Track side effects
-                    for effect in allSideEffects {
-                        switch effect {
-                        case .taskCreated: conversationStore.tasksCreatedCount += 1
-                        case .taskCompleted: conversationStore.tasksCompletedCount += 1
-                        default: break
+                        
+                        // Track side effects from THIS batch only
+                        for effect in result.sideEffects {
+                            switch effect {
+                            case .taskCreated: conversationStore.tasksCreatedCount += 1
+                            case .taskCompleted: conversationStore.tasksCompletedCount += 1
+                            default: break
+                            }
                         }
                     }
                     
@@ -186,6 +244,7 @@ final class NudgyConversationManager {
         
         ensureConversationActive()
         conversationStore.addUserMessage(userMessage)
+        if isBrainDumpMode { fullTranscript.append(userMessage) }
         isGenerating = true
         streamingText = ""
         
@@ -199,69 +258,111 @@ final class NudgyConversationManager {
             var allSideEffects: [ToolExecutionResult.ToolSideEffect] = []
             var totalToolCalls = 0
             
-            // First pass: check for tool calls (non-streaming)
-            let initialResponse = try await NudgyLLMService.shared.chatCompletion(
-                messages: conversationStore.apiMessages(),
-                tools: NudgyToolDefinitions.allTools
-            )
+            // In brain dump mode, use task-focused tools with "required" tool_choice
+            // so the LLM is forced to create tasks from user input.
+            // In normal mode, use "auto" so the LLM decides.
+            let tools = isBrainDumpMode
+                ? NudgyToolDefinitions.brainDumpTools
+                : NudgyToolDefinitions.allTools
+            let brainDumpToolChoice = "required"
             
-            if initialResponse.hasToolCalls {
-                // Execute tool calls
-                let toolCallRecords = initialResponse.toolCalls.map {
-                    ToolCallRecord(id: $0.id, functionName: $0.functionName, arguments: $0.arguments)
-                }
-                conversationStore.addAssistantMessage(initialResponse.content, toolCalls: toolCallRecords)
+            print("🧠💬 sendStreaming: brainDump=\(isBrainDumpMode), msg='\(userMessage.prefix(60))'")
+            
+            // Tool call loop — iterate up to 3 times to handle multi-step tool use
+            var iterations = 0
+            while iterations < 3 {
+                iterations += 1
                 
-                let results = toolExecutor.executeAll(initialResponse.toolCalls)
-                totalToolCalls += results.count
+                // First pass (or subsequent): check for tool calls (non-streaming)
+                let response = try await NudgyLLMService.shared.chatCompletion(
+                    messages: conversationStore.apiMessages(),
+                    tools: tools,
+                    toolChoice: iterations == 1 && isBrainDumpMode ? brainDumpToolChoice : "auto"
+                )
                 
-                for result in results {
-                    conversationStore.addToolMessage(result.result, toolCallId: result.toolCallId)
-                    allSideEffects.append(contentsOf: result.sideEffects)
-                }
+                print("🧠💬 iteration \(iterations): hasToolCalls=\(response.hasToolCalls), toolCount=\(response.toolCalls.count), content='\(response.content.prefix(60))'")
                 
-                // Track
-                for effect in allSideEffects {
-                    switch effect {
-                    case .taskCreated: conversationStore.tasksCreatedCount += 1
-                    case .taskCompleted: conversationStore.tasksCompletedCount += 1
-                    default: break
+                if response.hasToolCalls {
+                    // Execute tool calls (may be multiple — brain dump can produce several tasks per turn)
+                    let toolCallRecords = response.toolCalls.map {
+                        ToolCallRecord(id: $0.id, functionName: $0.functionName, arguments: $0.arguments)
                     }
+                    conversationStore.addAssistantMessage(response.content, toolCalls: toolCallRecords)
+                    
+                    let results = toolExecutor.executeAll(response.toolCalls)
+                    totalToolCalls += results.count
+                    
+                    for result in results {
+                        print("🧠🔧 Tool result [\(result.toolCallId)]: \(result.result.prefix(80))")
+                        conversationStore.addToolMessage(result.result, toolCallId: result.toolCallId)
+                        allSideEffects.append(contentsOf: result.sideEffects)
+                        
+                        // Track side effects from THIS batch only
+                        for effect in result.sideEffects {
+                            switch effect {
+                            case .taskCreated: conversationStore.tasksCreatedCount += 1
+                            case .taskCompleted: conversationStore.tasksCompletedCount += 1
+                            default: break
+                            }
+                        }
+                    }
+                    
+                    // Continue loop — LLM will generate final response with tool results
+                    continue
                 }
                 
-                // Now stream the final response with tool results
-                let streamResponse = try await NudgyLLMService.shared.streamChatCompletion(
-                    messages: conversationStore.apiMessages()
-                ) { [weak self] partial in
-                    self?.streamingText = partial
-                    onPartial(partial)
+                // No tool calls — this is the final text response
+                // Stream it to the user
+                if iterations == 1 && !response.content.isEmpty {
+                    // We already have the response from non-streaming call, use it directly
+                    conversationStore.addAssistantMessage(response.content)
+                    onPartial(response.content)
+                    streamingText = response.content
+                } else {
+                    // After tool calls, stream the final response with tool results context
+                    let streamResponse = try await NudgyLLMService.shared.streamChatCompletion(
+                        messages: conversationStore.apiMessages()
+                    ) { [weak self] partial in
+                        self?.streamingText = partial
+                        onPartial(partial)
+                    }
+                    conversationStore.addAssistantMessage(streamResponse.content)
                 }
                 
-                conversationStore.addAssistantMessage(streamResponse.content)
                 NudgyMemory.shared.recordInteraction()
                 
                 if !allSideEffects.isEmpty {
                     NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
                 }
                 
+                let finalText = conversationStore.messages.last?.content ?? ""
+                print("🧠💬 Final response (\(totalToolCalls) tools): '\(finalText.prefix(80))'")
+                
                 return ConversationResponse(
-                    text: streamResponse.content,
+                    text: finalText,
                     sideEffects: allSideEffects,
                     toolCallsMade: totalToolCalls
                 )
             }
             
-            // No tool calls — stream directly
-            // But we already got a response, so use it
-            conversationStore.addAssistantMessage(initialResponse.content)
-            onPartial(initialResponse.content)
-            streamingText = initialResponse.content
+            // Exhausted loop — stream a final response anyway
+            let streamResponse = try await NudgyLLMService.shared.streamChatCompletion(
+                messages: conversationStore.apiMessages()
+            ) { [weak self] partial in
+                self?.streamingText = partial
+                onPartial(partial)
+            }
+            conversationStore.addAssistantMessage(streamResponse.content)
             NudgyMemory.shared.recordInteraction()
             
+            if !allSideEffects.isEmpty {
+                NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
+            }
+            
             return ConversationResponse(
-                text: initialResponse.content,
-                sideEffects: [],
-                toolCallsMade: 0
+                text: streamResponse.content,
+                sideEffects: allSideEffects,
+                toolCallsMade: totalToolCalls
             )
             
         } catch {
@@ -337,9 +438,13 @@ final class NudgyConversationManager {
     
     /// End the current conversation and save summary to memory.
     /// Uses AI to generate a proper summary when available.
+    /// In brain dump mode, runs a final extraction sweep on the full transcript.
     func endConversation() {
         generationTask?.cancel()
         generationTask = nil
+        
+        let wasBrainDump = isBrainDumpMode
+        let transcript = fullTranscript
         
         // If conversation had enough turns, generate an AI summary
         if conversationStore.needsSummarization {
@@ -353,12 +458,14 @@ final class NudgyConversationManager {
             
             // Fire-and-forget AI summary
             Task {
+                let summaryPrefix = wasBrainDump ? "Brain dump conversation" : "Chat"
                 let aiSummary = await generateOneShotResponse(prompt: prompt)
                 let summary = ConversationSummary(
-                    summary: aiSummary ?? "Chat with \(turnCount) turns",
+                    summary: aiSummary ?? "\(summaryPrefix) with \(turnCount) turns, \(created) tasks created",
                     turnCount: turnCount,
                     tasksCreated: created,
-                    tasksCompleted: completed
+                    tasksCompleted: completed,
+                    mood: wasBrainDump ? "brain-dump" : nil
                 )
                 NudgyMemory.shared.saveConversationSummary(summary)
                 #if DEBUG
@@ -371,12 +478,32 @@ final class NudgyConversationManager {
                 NudgyMemory.shared.saveConversationSummary(summary)
             }
         }
+        
+        // Reset brain dump state
+        isBrainDumpMode = false
+        fullTranscript = []
+        
+        #if DEBUG
+        if wasBrainDump {
+            print("🧠🎙️ Brain dump conversation ended. Transcript segments: \(transcript.count)")
+        }
+        #endif
+    }
+    
+    /// End the brain dump conversation and return a summary of tasks created.
+    /// Returns the count of tasks created during the conversation.
+    func endBrainDumpConversation() -> Int {
+        let tasksCreated = conversationStore.tasksCreatedCount
+        endConversation()
+        return tasksCreated
     }
     
     /// Clear conversation without saving.
     func clearConversation() {
         generationTask?.cancel()
         generationTask = nil
+        isBrainDumpMode = false
+        fullTranscript = []
         conversationStore.clearConversation()
     }
     

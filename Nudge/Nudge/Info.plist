@@ -9,7 +9,7 @@
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>com.nudge.app.liveActivityRefresh</string>
+		<string>com.tarsitgroup.nudge.liveActivityRefresh</string>
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Nudge uses the microphone so you can brain dump your thoughts by speaking instead of typing.</string>
@@ -19,7 +19,7 @@
 	<string>Nudge can look up contacts so you can quickly call or message someone from a task card.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
-		<string>com.nudge.app.viewTask</string>
+		<string>com.tarsitgroup.nudge.viewTask</string>
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>

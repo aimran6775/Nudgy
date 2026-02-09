@@ -18,6 +18,12 @@ enum NudgyToolDefinitions {
         [lookupTasks, getTaskStats, getCurrentTime, taskAction, extractMemory]
     }
     
+    /// Tools for brain dump mode — focused on task creation + memory.
+    /// Excludes lookup/stats to bias the LLM toward creating, not querying.
+    static var brainDumpTools: [[String: Any]] {
+        [taskAction, extractMemory]
+    }
+    
     /// Read-only tools (no mutations).
     static var readOnlyTools: [[String: Any]] {
         [lookupTasks, getTaskStats, getCurrentTime]
@@ -90,7 +96,7 @@ enum NudgyToolDefinitions {
         "type": "function",
         "function": [
             "name": "task_action",
-            "description": "Perform an action on tasks: 'complete' to mark done, 'snooze' to snooze until later, 'create' to add a new task.",
+            "description": "Perform an action on tasks: 'complete' to mark done, 'snooze' to snooze until later, 'create' to add a new task. When creating, always infer emoji, priority, and due date from context.",
             "parameters": [
                 "type": "object",
                 "properties": [
@@ -101,7 +107,29 @@ enum NudgyToolDefinitions {
                     ],
                     "task_content": [
                         "type": "string",
-                        "description": "For complete/snooze: keyword to match existing task. For create: the new task text."
+                        "description": "For complete/snooze: keyword to match existing task. For create: short, actionable task text (max 8 words)."
+                    ],
+                    "emoji": [
+                        "type": "string",
+                        "description": "For create: a single emoji that represents the task. e.g. 📞 for calls, 📧 for emails, 🏋️ for exercise."
+                    ],
+                    "priority": [
+                        "type": "string",
+                        "enum": ["high", "medium", "low"],
+                        "description": "For create: task priority. 'high' for urgent/ASAP, 'low' for someday/maybe, 'medium' otherwise."
+                    ],
+                    "due_date": [
+                        "type": "string",
+                        "description": "For create: due date as YYYY-MM-DD or relative expression like 'tomorrow', 'this weekend', 'next week'. Empty if no deadline mentioned."
+                    ],
+                    "action_type": [
+                        "type": "string",
+                        "enum": ["CALL", "TEXT", "EMAIL", ""],
+                        "description": "For create: if the task involves contacting someone, specify the action type."
+                    ],
+                    "contact_name": [
+                        "type": "string",
+                        "description": "For create: the person's name if the task involves contacting someone."
                     ]
                 ],
                 "required": ["action", "task_content"]

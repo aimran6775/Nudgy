@@ -171,6 +171,21 @@ final class NudgyEngine {
     
     // MARK: - Brain Dump
     
+    /// Start a brain dump voice conversation — Nudgy actively extracts tasks.
+    func startBrainDumpConversation(modelContext: ModelContext) {
+        conversation.startBrainDumpConversation(modelContext: modelContext)
+    }
+    
+    /// End the brain dump conversation and return the count of tasks created.
+    func endBrainDumpConversation() -> Int {
+        conversation.endBrainDumpConversation()
+    }
+    
+    /// Whether the current conversation is in brain dump mode.
+    var isBrainDumpMode: Bool {
+        conversation.isBrainDumpMode
+    }
+    
     /// Transition to brain dump listening.
     func startBrainDumpListening() {
         stateAdapter.startListening()
@@ -206,9 +221,19 @@ final class NudgyEngine {
         voiceOutput.speak(text)
     }
     
+    /// Speak a short reaction (interrupts current speech).
+    func speakReaction(_ text: String) {
+        voiceOutput.speakReaction(text)
+    }
+    
     /// Stop speaking.
     func stopSpeaking() {
         voiceOutput.stop()
+    }
+    
+    /// Prepare audio session for playback (call after STT stops).
+    func prepareVoiceForPlayback() {
+        voiceOutput.prepareForPlayback()
     }
     
     // MARK: - Draft Generation

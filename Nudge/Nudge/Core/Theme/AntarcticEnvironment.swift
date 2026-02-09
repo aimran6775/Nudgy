@@ -101,6 +101,7 @@ struct AntarcticEnvironment: View {
     let unlockedProps: Set<String>  // e.g. ["igloo", "campfire"]
     
     /// Size of the scene — fills available space
+    var sceneWidth: CGFloat = 390
     var sceneHeight: CGFloat = 500
     
     @State private var snowflakes: [Snowflake] = []
@@ -328,7 +329,7 @@ struct AntarcticEnvironment: View {
         let baseCount = Int(20 * mood.snowIntensity)
         snowflakes = (0..<baseCount).map { _ in
             Snowflake(
-                x: CGFloat.random(in: 0...UIScreen.main.bounds.width),
+                x: CGFloat.random(in: 0...sceneWidth),
                 y: CGFloat.random(in: -50...sceneHeight),
                 size: CGFloat.random(in: 2...5),
                 opacity: Double.random(in: 0.3...0.7),
@@ -347,7 +348,7 @@ struct AntarcticEnvironment: View {
                 // Respawn at top when off screen
                 if snowflakes[i].y > sceneHeight + 10 {
                     snowflakes[i].y = -10
-                    snowflakes[i].x = CGFloat.random(in: 0...UIScreen.main.bounds.width)
+                    snowflakes[i].x = CGFloat.random(in: 0...sceneWidth)
                 }
             }
         }

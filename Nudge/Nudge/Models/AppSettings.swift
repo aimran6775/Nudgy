@@ -11,6 +11,15 @@ import SwiftUI
 /// No migrations, no model container complexity.
 @Observable
 final class AppSettings {
+
+    /// Set by the app after authentication so user-specific settings are isolated per account.
+    /// Not persisted directly; it’s derived from the active signed-in user.
+    var activeUserID: String?
+
+    private func scopedKey(_ base: String) -> String {
+        guard let activeUserID, !activeUserID.isEmpty else { return base }
+        return "\(activeUserID):\(base)"
+    }
     
     // MARK: - Quiet Hours
     
@@ -53,34 +62,61 @@ final class AppSettings {
     // MARK: - Usage Tracking (Free Tier Limits)
     
     var dailyDumpsUsed: Int {
-        get { UserDefaults.standard.integer(forKey: "dailyDumpsUsed") }
-        set { UserDefaults.standard.set(newValue, forKey: "dailyDumpsUsed") }
+        get { UserDefaults.standard.integer(forKey: scopedKey("dailyDumpsUsed")) }
+        set { UserDefaults.standard.set(newValue, forKey: scopedKey("dailyDumpsUsed")) }
     }
     
     var dailyDumpsResetDate: Date {
         get {
-            (UserDefaults.standard.object(forKey: "dailyDumpsResetDate") as? Date) ?? .distantPast
+            (UserDefaults.standard.object(forKey: scopedKey("dailyDumpsResetDate")) as? Date) ?? .distantPast
         }
-        set { UserDefaults.standard.set(newValue, forKey: "dailyDumpsResetDate") }
+        set { UserDefaults.standard.set(newValue, forKey: scopedKey("dailyDumpsResetDate")) }
     }
     
     var savedItemsCount: Int {
-        get { UserDefaults.standard.integer(forKey: "savedItemsCount") }
-        set { UserDefaults.standard.set(newValue, forKey: "savedItemsCount") }
+        get { UserDefaults.standard.integer(forKey: scopedKey("savedItemsCount")) }
+        set { UserDefaults.standard.set(newValue, forKey: scopedKey("savedItemsCount")) }
     }
     
     // MARK: - User Info
     
     var userName: String {
-        get { UserDefaults.standard.string(forKey: "userName") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "userName") }
+        get {
+            access(keyPath: \.userName)
+            return UserDefaults.standard.string(forKey: scopedKey("userName")) ?? ""
+        }
+        set {
+            withMutation(keyPath: \.userName) {
+                UserDefaults.standard.set(newValue, forKey: scopedKey("userName"))
+            }
+        }
     }
     
     // MARK: - Onboarding
     
+    /// Global flag — shown before auth. Not user-scoped.
+    var hasSeenIntro: Bool {
+        get {
+            access(keyPath: \.hasSeenIntro)
+            return UserDefaults.standard.bool(forKey: "hasSeenIntro")
+        }
+        set {
+            withMutation(keyPath: \.hasSeenIntro) {
+                UserDefaults.standard.set(newValue, forKey: "hasSeenIntro")
+            }
+        }
+    }
+
     var hasCompletedOnboarding: Bool {
-        get { UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") }
-        set { UserDefaults.standard.set(newValue, forKey: "hasCompletedOnboarding") }
+        get {
+            access(keyPath: \.hasCompletedOnboarding)
+            return UserDefaults.standard.bool(forKey: scopedKey("hasCompletedOnboarding"))
+        }
+        set {
+            withMutation(keyPath: \.hasCompletedOnboarding) {
+                UserDefaults.standard.set(newValue, forKey: scopedKey("hasCompletedOnboarding"))
+            }
+        }
     }
     
     // MARK: - Computed Helpers

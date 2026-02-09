@@ -59,6 +59,7 @@ final class NudgyLLMService {
     func chatCompletion(
         messages: [[String: Any]],
         tools: [[String: Any]]? = nil,
+        toolChoice: String? = nil,
         model: String? = nil,
         temperature: Double? = nil,
         maxTokens: Int? = nil
@@ -82,7 +83,9 @@ final class NudgyLLMService {
         
         if let tools = tools, !tools.isEmpty {
             body["tools"] = tools
-            body["tool_choice"] = "auto"
+            body["tool_choice"] = toolChoice ?? "auto"
+            // Allow the model to emit multiple tool calls in parallel
+            body["parallel_tool_calls"] = true
         }
         
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -96,6 +99,7 @@ final class NudgyLLMService {
         guard httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
             lastError = "HTTP \(httpResponse.statusCode): \(errorBody)"
+            print("🔴 LLM API error: HTTP \(httpResponse.statusCode) — \(errorBody.prefix(200))")
             throw NudgyLLMError.apiError(statusCode: httpResponse.statusCode, message: errorBody)
         }
         
@@ -146,6 +150,7 @@ final class NudgyLLMService {
         }
         
         var fullContent = ""
+        var toolCallIds: [String: String] = [:]  // index → id
         var toolCalls: [String: (name: String, arguments: String)] = [:]
         var finishReason: String?
         
@@ -179,6 +184,7 @@ final class NudgyLLMService {
                         let key = "\(index)"
                         
                         if let id = tc["id"] as? String {
+                            toolCallIds[key] = id
                             let funcInfo = tc["function"] as? [String: Any]
                             toolCalls[key] = (
                                 name: funcInfo?["name"] as? String ?? "",
@@ -197,7 +203,8 @@ final class NudgyLLMService {
         }
         
         let parsedToolCalls = toolCalls.sorted { $0.key < $1.key }.map { (key, value) in
-            LLMToolCall(id: "call_\(key)", functionName: value.name, arguments: value.arguments)
+            // Use the real tool call ID from the API, not synthetic
+            LLMToolCall(id: toolCallIds[key] ?? "call_\(key)", functionName: value.name, arguments: value.arguments)
         }
         
         return LLMResponse(
@@ -238,7 +245,8 @@ final class NudgyLLMService {
     func textToSpeech(
         text: String,
         voice: String? = nil,
-        model: String? = nil
+        model: String? = nil,
+        speed: Double? = nil
     ) async throws -> Data {
         let url = URL(string: "\(NudgyConfig.OpenAI.baseURL)/audio/speech")!
         var request = URLRequest(url: url)
@@ -251,7 +259,8 @@ final class NudgyLLMService {
             "model": model ?? NudgyConfig.Voice.openAITTSModel,
             "input": text,
             "voice": voice ?? NudgyConfig.Voice.openAIVoice,
-            "response_format": "mp3"
+            "response_format": "mp3",
+            "speed": speed ?? NudgyConfig.Voice.openAISpeed
         ]
         
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

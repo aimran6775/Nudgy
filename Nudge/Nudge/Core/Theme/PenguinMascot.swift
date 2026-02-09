@@ -882,7 +882,6 @@ struct ScarfShape: Shape {
     func path(in rect: CGRect) -> Path {
         let w = rect.width
         let h = rect.height
-        let cx = rect.midX
         
         return Path { p in
             // Main wrap (left to right across neck)

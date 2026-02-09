@@ -125,6 +125,7 @@ final class NudgeItem {
     
     // MARK: Timestamps
     var createdAt: Date
+    var updatedAt: Date
     var completedAt: Date?
     
     // MARK: Ordering
@@ -146,6 +147,7 @@ final class NudgeItem {
     // MARK: Init
     
     init(
+        id: UUID = UUID(),
         content: String,
         sourceType: SourceType = .manual,
         sourceUrl: String? = nil,
@@ -158,7 +160,7 @@ final class NudgeItem {
         priority: TaskPriority? = nil,
         dueDate: Date? = nil
     ) {
-        self.id = UUID()
+        self.id = id
         self.content = content
         self.sourceTypeRaw = sourceType.rawValue
         self.sourceUrl = sourceUrl
@@ -168,7 +170,9 @@ final class NudgeItem {
         self.actionTypeRaw = actionType?.rawValue
         self.actionTarget = actionTarget
         self.contactName = contactName
-        self.createdAt = Date()
+        let now = Date()
+        self.createdAt = now
+        self.updatedAt = now
         self.sortOrder = sortOrder
         self.priorityRaw = priority?.rawValue
         self.dueDate = dueDate
@@ -258,27 +262,32 @@ final class NudgeItem {
     func markDone() {
         status = .done
         completedAt = Date()
+        updatedAt = Date()
     }
     
     /// Snooze the item until a specific time
     func snooze(until date: Date) {
         status = .snoozed
         snoozedUntil = date
+        updatedAt = Date()
     }
     
     /// Skip (move to end of queue)
     func skip(newOrder: Int) {
         sortOrder = newOrder
+        updatedAt = Date()
     }
     
     /// Resurface a snoozed item
     func resurface() {
         status = .active
         snoozedUntil = nil
+        updatedAt = Date()
     }
     
     /// Drop (soft delete)
     func drop() {
         status = .dropped
+        updatedAt = Date()
     }
 }

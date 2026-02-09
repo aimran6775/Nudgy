@@ -13,7 +13,7 @@ import Foundation
 
 /// Central configuration for the Nudgy conversational engine.
 /// Reads API keys from Secrets.xcconfig via Info.plist, with runtime overrides.
-nonisolated(unsafe) enum NudgyConfig {
+nonisolated enum NudgyConfig {
     
     // MARK: - LLM Provider
     
@@ -88,13 +88,47 @@ nonisolated(unsafe) enum NudgyConfig {
         static let volume: Float = 0.85
         
         /// Whether to use OpenAI TTS API for higher quality voice.
-        static var useOpenAITTS = false
+        /// Defaults to true when API key is available. Persisted in UserDefaults.
+        static var useOpenAITTS: Bool {
+            get {
+                // Default to true if never set and API key is available
+                if UserDefaults.standard.object(forKey: "nudgyUseOpenAITTS") == nil {
+                    return !NudgyConfig.OpenAI.apiKey.isEmpty
+                }
+                return UserDefaults.standard.bool(forKey: "nudgyUseOpenAITTS")
+            }
+            set { UserDefaults.standard.set(newValue, forKey: "nudgyUseOpenAITTS") }
+        }
         
-        /// OpenAI TTS voice name.
-        static var openAIVoice = "nova" // warm, friendly voice
+        /// OpenAI TTS voice name. Persisted in UserDefaults.
+        /// Options: alloy, echo, fable, onyx, nova, shimmer
+        /// shimmer = cutest, most youthful voice for Nudgy's penguin personality
+        static var openAIVoice: String {
+            get { UserDefaults.standard.string(forKey: "nudgyOpenAIVoice") ?? "shimmer" }
+            set { UserDefaults.standard.set(newValue, forKey: "nudgyOpenAIVoice") }
+        }
         
         /// OpenAI TTS model.
         static var openAITTSModel = "tts-1"
+        
+        /// Available OpenAI voices with display metadata.
+        static let availableVoices: [(id: String, name: String, description: String)] = [
+            ("shimmer", "Shimmer", "Cute & bubbly"),
+            ("nova", "Nova", "Warm & friendly"),
+            ("alloy", "Alloy", "Balanced & clear"),
+            ("fable", "Fable", "Expressive & warm"),
+            ("echo", "Echo", "Calm & smooth"),
+            ("onyx", "Onyx", "Deep & confident"),
+        ]
+        
+        /// Speed for OpenAI TTS (0.25-4.0, default 1.0)
+        static var openAISpeed: Double {
+            get {
+                let stored = UserDefaults.standard.double(forKey: "nudgyOpenAISpeed")
+                return stored > 0 ? stored : 1.0
+            }
+            set { UserDefaults.standard.set(newValue, forKey: "nudgyOpenAISpeed") }
+        }
     }
     
     // MARK: - Memory Configuration
@@ -113,7 +147,7 @@ nonisolated(unsafe) enum NudgyConfig {
         static let retentionDays = 30
         
         /// App Group identifier for shared storage.
-        static let appGroup = "group.com.nudge.app"
+        static let appGroup = "group.com.tarsitgroup.nudge"
         
         /// UserDefaults key for memory store.
         static let memoryKey = "nudgyConversationMemory"

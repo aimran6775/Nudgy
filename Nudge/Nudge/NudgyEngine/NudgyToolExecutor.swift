@@ -42,6 +42,8 @@ final class NudgyToolExecutor {
     func execute(_ toolCall: LLMToolCall) -> ToolExecutionResult {
         let args = toolCall.parsedArguments() ?? [:]
         
+        print("🧠🔧 Executing tool: \(toolCall.functionName) id=\(toolCall.id) args=\(toolCall.arguments.prefix(120))")
+        
         switch toolCall.functionName {
         case "lookup_tasks":
             return executeLookupTasks(toolCallId: toolCall.id, args: args)
@@ -211,11 +213,63 @@ final class NudgyToolExecutor {
             )
             
         case "create":
-            _ = repo.createManual(content: taskContent)
+            // Parse rich metadata from tool call arguments
+            let emoji = args["emoji"] as? String
+            let priorityRaw = args["priority"] as? String ?? "medium"
+            let dueDateRaw = args["due_date"] as? String ?? ""
+            let actionTypeRaw = args["action_type"] as? String ?? ""
+            let contactName = args["contact_name"] as? String
+            
+            print("🧠🔧 task_action CREATE: '\(taskContent)' emoji=\(emoji ?? "nil") priority=\(priorityRaw) due=\(dueDateRaw) action=\(actionTypeRaw) contact=\(contactName ?? "nil")")
+            
+            // Map action type
+            let actionType: ActionType?
+            switch actionTypeRaw.uppercased() {
+            case "CALL": actionType = .call
+            case "TEXT": actionType = .text
+            case "EMAIL": actionType = .email
+            default: actionType = nil
+            }
+            
+            // Map priority
+            let priority: TaskPriority
+            switch priorityRaw.lowercased() {
+            case "high": priority = .high
+            case "low": priority = .low
+            default: priority = .medium
+            }
+            
+            // Parse due date
+            let dueDate = Self.parseDueDate(dueDateRaw)
+            
+            // Create rich task
+            let item = repo.createManualWithDetails(
+                content: taskContent,
+                emoji: emoji,
+                actionType: actionType,
+                contactName: contactName
+            )
+            item.priority = priority
+            if let dueDate {
+                item.dueDate = dueDate
+            }
+            
+            // Force save to ensure persistence
+            try? modelContext.save()
+            
             HapticService.shared.cardAppear()
+            
+            print("🧠✅ Task created: '\(taskContent)' — saved to SwiftData")
+            
+            // Build concise confirmation for LLM (it reads this and responds to user)
+            var details = "\(emoji ?? "📝") Created: '\(taskContent)'"
+            if priority == .high { details += " ⚡️HIGH" }
+            if dueDate != nil { details += " 📅\(dueDateRaw)" }
+            if let contact = contactName, !contact.isEmpty { details += " → \(contact)" }
+            
             return ToolExecutionResult(
                 toolCallId: toolCallId,
-                result: "Created new task: '\(taskContent)' 📝",
+                result: details,
                 sideEffects: [.taskCreated(content: taskContent)]
             )
             
@@ -264,5 +318,53 @@ final class NudgyToolExecutor {
             result: "Remembered: \(fact)",
             sideEffects: [.memoryLearned(fact: fact, category: categoryRaw)]
         )
+    }
+    
+    // MARK: - Date Parsing Helper
+    
+    /// Parse a due date string (YYYY-MM-DD or relative expression) into a Date.
+    /// Replicates the logic from ExtractedTask.parsedDueDate for tool-call usage.
+    private static func parseDueDate(_ raw: String) -> Date? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+        
+        // Try ISO 8601 / YYYY-MM-DD
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        df.timeZone = .current
+        if let date = df.date(from: raw.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            let cal = Calendar.current
+            return cal.date(bySettingHour: 9, minute: 0, second: 0, of: date)
+        }
+        
+        let cal = Calendar.current
+        let now = Date()
+        
+        if trimmed.contains("today") || trimmed.contains("tonight") {
+            return cal.date(bySettingHour: trimmed.contains("tonight") ? 20 : 17, minute: 0, second: 0, of: now)
+        }
+        if trimmed.contains("tomorrow") {
+            let tom = cal.date(byAdding: .day, value: 1, to: now)!
+            if trimmed.contains("morning") {
+                return cal.date(bySettingHour: 9, minute: 0, second: 0, of: tom)
+            } else if trimmed.contains("afternoon") {
+                return cal.date(bySettingHour: 14, minute: 0, second: 0, of: tom)
+            } else if trimmed.contains("evening") || trimmed.contains("night") {
+                return cal.date(bySettingHour: 19, minute: 0, second: 0, of: tom)
+            }
+            return cal.date(bySettingHour: 9, minute: 0, second: 0, of: tom)
+        }
+        if trimmed.contains("this weekend") {
+            let weekday = cal.component(.weekday, from: now)
+            let daysUntilSat = (7 - weekday) % 7
+            let sat = cal.date(byAdding: .day, value: max(daysUntilSat, 1), to: now)!
+            return cal.date(bySettingHour: 10, minute: 0, second: 0, of: sat)
+        }
+        if trimmed.contains("next week") {
+            let nextMon = cal.date(byAdding: .day, value: (9 - cal.component(.weekday, from: now)) % 7 + 1, to: now)!
+            return cal.date(bySettingHour: 9, minute: 0, second: 0, of: nextMon)
+        }
+        
+        return nil
     }
 }

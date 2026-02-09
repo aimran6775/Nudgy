@@ -13,13 +13,21 @@
 import SwiftUI
 import StoreKit
 import TipKit
+import PhotosUI
 
 struct YouView: View {
 
     @Environment(AppSettings.self) private var settings
     @Environment(PenguinState.self) private var penguinState
+    @Environment(AuthSession.self) private var auth
 
     @State private var showPaywall = false
+    @State private var selectedVoice: String = NudgyConfig.Voice.openAIVoice
+    @State private var isPreviewingVoice = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var avatarService = AvatarService.shared
+    @State private var showMemojiPicker = false
+    @State private var showPhotoPicker = false
 
     private let liveActivityTip = LiveActivityTip()
 
@@ -49,13 +57,9 @@ struct YouView: View {
                 ScrollView {
                     VStack(spacing: DesignTokens.spacingLG) {
 
-                        // Your penguin
-                        PenguinSceneView(
-                            size: .medium,
-                            expressionOverride: .idle,
-                            accentColorOverride: DesignTokens.accentActive
-                        )
-                        .padding(.top, DesignTokens.spacingLG)
+                        // Avatar / Memoji header
+                        avatarHeader
+                            .padding(.top, DesignTokens.spacingLG)
 
                         // Your Name — how Nudgy addresses you
                         youSection(title: String(localized: "About You")) {
@@ -147,17 +151,43 @@ struct YouView: View {
                         }
 
                         youSection(title: String(localized: "Nudgy")) {
-                            Toggle(isOn: Binding(
-                                get: { NudgyVoiceOutput.shared.isEnabled },
-                                set: { NudgyVoiceOutput.shared.isEnabled = $0 }
-                            )) {
-                                youRow(
-                                    icon: "waveform.circle.fill",
-                                    title: String(localized: "Nudgy's Voice"),
-                                    subtitle: String(localized: "Nudgy reads responses aloud")
-                                )
+                            VStack(spacing: DesignTokens.spacingMD) {
+                                // Voice on/off toggle
+                                Toggle(isOn: Binding(
+                                    get: { NudgyVoiceOutput.shared.isEnabled },
+                                    set: { NudgyVoiceOutput.shared.isEnabled = $0 }
+                                )) {
+                                    youRow(
+                                        icon: "waveform.circle.fill",
+                                        title: String(localized: "Nudgy's Voice"),
+                                        subtitle: String(localized: "Nudgy reads responses aloud")
+                                    )
+                                }
+                                .tint(DesignTokens.accentActive)
+                                
+                                // Voice picker (only when voice is on)
+                                if NudgyVoiceOutput.shared.isEnabled {
+                                    Divider()
+                                        .overlay(Color.white.opacity(0.06))
+                                    
+                                    VStack(alignment: .leading, spacing: DesignTokens.spacingSM) {
+                                        Text(String(localized: "Voice"))
+                                            .font(AppTheme.caption.weight(.semibold))
+                                            .foregroundStyle(DesignTokens.textSecondary)
+                                        
+                                        // Voice options grid
+                                        LazyVGrid(columns: [
+                                            GridItem(.flexible()),
+                                            GridItem(.flexible()),
+                                            GridItem(.flexible())
+                                        ], spacing: DesignTokens.spacingSM) {
+                                            ForEach(NudgyConfig.Voice.availableVoices, id: \.id) { voice in
+                                                voiceButton(voice: voice)
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                            .tint(DesignTokens.accentActive)
                         }
 
                         // Pro
@@ -217,6 +247,20 @@ struct YouView: View {
                             }
                         }
 
+                        // Account
+                        youSection(title: String(localized: "Account")) {
+                            Button {
+                                auth.signOut()
+                            } label: {
+                                youRow(
+                                    icon: "rectangle.portrait.and.arrow.right",
+                                    title: String(localized: "Sign Out"),
+                                    subtitle: String(localized: "Switch to a different account")
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+
                         // Spacer for bottom padding
                         Spacer(minLength: DesignTokens.spacingXXXL)
                     }
@@ -230,6 +274,108 @@ struct YouView: View {
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showPaywall) {
             PaywallView()
+        }
+        .onAppear {
+            avatarService.loadFromMeCard()
+        }
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            guard let newItem else { return }
+            Task {
+                if let data = try? await newItem.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    avatarService.setCustomAvatar(image)
+                }
+                selectedPhotoItem = nil
+            }
+        }
+    }
+
+    // MARK: - Avatar Header
+    
+    private var avatarHeader: some View {
+        VStack(spacing: DesignTokens.spacingSM) {
+            Menu {
+                Button {
+                    showMemojiPicker = true
+                } label: {
+                    Label(String(localized: "Choose Memoji"), systemImage: "face.smiling")
+                }
+                
+                Button {
+                    showPhotoPicker = true
+                } label: {
+                    Label(String(localized: "Choose Photo"), systemImage: "photo.on.rectangle")
+                }
+                
+                if avatarService.avatarImage != nil {
+                    Divider()
+                    Button(role: .destructive) {
+                        avatarService.removeAvatar()
+                    } label: {
+                        Label(String(localized: "Remove Photo"), systemImage: "trash")
+                    }
+                }
+            } label: {
+                ZStack {
+                    if let image = avatarService.avatarImage {
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 88, height: 88)
+                            .clipShape(Circle())
+                    } else {
+                        // Initials or generic person fallback
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [DesignTokens.accentActive.opacity(0.3), DesignTokens.accentActive.opacity(0.15)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 88, height: 88)
+                            .overlay {
+                                if !settings.userName.isEmpty {
+                                    Text(String(settings.userName.prefix(1)).uppercased())
+                                        .font(.system(size: 36, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(DesignTokens.textPrimary)
+                                } else {
+                                    Image(systemName: "person.fill")
+                                        .font(.system(size: 32))
+                                        .foregroundStyle(DesignTokens.textSecondary)
+                                }
+                            }
+                    }
+                    
+                    // Edit badge
+                    Circle()
+                        .fill(DesignTokens.cardSurface)
+                        .frame(width: 28, height: 28)
+                        .overlay {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(DesignTokens.accentActive)
+                        }
+                        .overlay {
+                            Circle()
+                                .strokeBorder(Color.black, lineWidth: 2)
+                        }
+                        .offset(x: 30, y: 30)
+                }
+            }
+            .buttonStyle(.plain)
+            .nudgeAccessibility(
+                label: String(localized: "Profile photo"),
+                hint: String(localized: "Tap to choose a photo or Memoji"),
+                traits: .isButton
+            )
+            
+            // Name below avatar
+            if !settings.userName.isEmpty {
+                Text(settings.userName)
+                    .font(AppTheme.headline)
+                    .foregroundStyle(DesignTokens.textPrimary)
+            }
         }
     }
 
@@ -298,6 +444,60 @@ struct YouView: View {
         formatter.dateFormat = "h a"
         let date = Calendar.current.date(from: DateComponents(hour: hour)) ?? Date()
         return formatter.string(from: date)
+    }
+    
+    // MARK: - Voice Button
+    
+    private func voiceButton(voice: (id: String, name: String, description: String)) -> some View {
+        let isSelected = selectedVoice == voice.id
+        
+        return Button {
+            selectedVoice = voice.id
+            NudgyConfig.Voice.openAIVoice = voice.id
+            
+            // Preview the voice
+            isPreviewingVoice = true
+            NudgyVoiceOutput.shared.speakReaction("Hey! I'm Nudgy!")
+            
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                isPreviewingVoice = false
+            }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(isSelected ? DesignTokens.accentActive : DesignTokens.textTertiary)
+                
+                Text(voice.name)
+                    .font(AppTheme.caption.weight(.semibold))
+                    .foregroundStyle(isSelected ? DesignTokens.textPrimary : DesignTokens.textSecondary)
+                
+                Text(voice.description)
+                    .font(.system(size: 10))
+                    .foregroundStyle(DesignTokens.textTertiary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, DesignTokens.spacingSM)
+            .background(
+                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusButton)
+                    .fill(isSelected ? DesignTokens.accentActive.opacity(0.12) : Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusButton)
+                            .strokeBorder(
+                                isSelected ? DesignTokens.accentActive.opacity(0.4) : Color.white.opacity(0.06),
+                                lineWidth: 1
+                            )
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .nudgeAccessibility(
+            label: "\(voice.name) voice, \(voice.description)",
+            hint: isSelected
+                ? String(localized: "Currently selected")
+                : String(localized: "Double tap to select and preview")
+        )
     }
 }
 

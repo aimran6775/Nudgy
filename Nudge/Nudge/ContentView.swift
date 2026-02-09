@@ -32,8 +32,15 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            Tab(String(localized: "Nudgy"), systemImage: "bird.fill", value: NudgeTab.nudgy) {
+            Tab(value: NudgeTab.nudgy) {
                 NudgyHomeView()
+            } label: {
+                Label {
+                    Text(String(localized: "Nudgy"))
+                } icon: {
+                    Image("PenguinTab")
+                        .renderingMode(.template)
+                }
             }
 
             Tab(String(localized: "Nudges"), systemImage: "sparkles", value: NudgeTab.nudges) {

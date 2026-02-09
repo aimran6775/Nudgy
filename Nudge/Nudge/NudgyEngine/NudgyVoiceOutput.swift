@@ -4,11 +4,11 @@
 //
 //  Phase 11: Modular text-to-speech output.
 //  Supports two backends:
-//  1. AVSpeechSynthesizer (on-device, free, instant)
-//  2. OpenAI TTS API (higher quality, requires API key)
+//  1. AVSpeechSynthesizer (on-device, free, instant fallback)
+//  2. OpenAI TTS API (higher quality, cute "shimmer" voice — default)
 //
 //  The active backend is selected via NudgyConfig.Voice.useOpenAITTS.
-//  Modular: can be replaced with any open-source voice model.
+//  OpenAI TTS is preferred for Nudgy's warm, cute personality.
 //
 
 import AVFoundation
@@ -17,6 +17,7 @@ import Foundation
 // MARK: - NudgyVoiceOutput
 
 /// Manages Nudgy's text-to-speech voice output.
+/// Supports OpenAI TTS (shimmer voice, default) with AVSpeechSynthesizer fallback.
 @MainActor @Observable
 final class NudgyVoiceOutput: NSObject {
     
@@ -36,14 +37,17 @@ final class NudgyVoiceOutput: NSObject {
     
     private let synthesizer = AVSpeechSynthesizer()
     private var audioPlayer: AVAudioPlayer?
+    private var pendingCleanupURL: URL?
     
-    /// The preferred AVSpeech voice.
+    /// Queue of texts waiting to be spoken (prevents overlapping speech)
+    private var speechQueue: [String] = []
+    private var isProcessingQueue = false
+    
+    /// The preferred AVSpeech voice (fallback only).
     private var systemVoice: AVSpeechSynthesisVoice? {
-        // Try to find a good English voice
         if let voice = AVSpeechSynthesisVoice(language: "en-US") {
             return voice
         }
-        // Absolute fallback
         return AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en")
     }
     
@@ -67,48 +71,97 @@ final class NudgyVoiceOutput: NSObject {
         }
     }
     
+    /// Ensure audio session is ready for playback (call after STT stops)
+    func prepareForPlayback() {
+        configureAudioSession()
+    }
+    
     // MARK: - Speak
     
-    /// Speak text aloud as Nudgy.
-    func speak(_ text: String) {
+    /// Speak text aloud as Nudgy. Queues if already speaking.
+    /// Returns true if TTS will play, false if skipped (voice disabled or empty text).
+    @discardableResult
+    func speak(_ text: String) -> Bool {
         guard NudgyConfig.Voice.isEnabled else {
             print("🔇 NudgyVoiceOutput: Voice disabled, skipping")
-            return
+            return false
         }
         
         let cleaned = cleanForSpeech(text)
         guard !cleaned.isEmpty else {
             print("🔇 NudgyVoiceOutput: Text empty after cleaning, skipping")
-            return
+            return false
         }
         print("🐧 NudgyVoiceOutput: speak() called with: \(cleaned.prefix(80))")
         
-        if NudgyConfig.Voice.useOpenAITTS {
-            speakWithOpenAI(cleaned)
-        } else {
-            speakWithSystem(cleaned)
+        // If already speaking, queue it
+        if isSpeaking {
+            print("🐧 NudgyVoiceOutput: Already speaking, queueing")
+            speechQueue.append(cleaned)
+            return true
         }
+        
+        speakNow(cleaned)
+        return true
     }
     
-    /// Stop speaking immediately.
+    /// Speak a short reaction (interrupts current speech, doesn't queue)
+    func speakReaction(_ text: String) {
+        guard NudgyConfig.Voice.isEnabled else { return }
+        let cleaned = cleanForSpeech(text)
+        guard !cleaned.isEmpty else { return }
+        
+        // Interrupt anything playing
+        stop()
+        speechQueue.removeAll()
+        speakNow(cleaned)
+    }
+    
+    /// Stop speaking immediately and clear queue.
     func stop() {
+        speechQueue.removeAll()
+        isProcessingQueue = false
+        
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
         audioPlayer?.stop()
         audioPlayer = nil
+        cleanupTempFile()
         isSpeaking = false
     }
     
-    // MARK: - System TTS (AVSpeechSynthesizer)
+    // MARK: - Internal
+    
+    private func speakNow(_ text: String) {
+        isSpeaking = true
+        isProcessingQueue = true
+        
+        if NudgyConfig.Voice.useOpenAITTS {
+            speakWithOpenAI(text)
+        } else {
+            speakWithSystem(text)
+        }
+    }
+    
+    /// Process the next item in the speech queue
+    private func processQueue() {
+        guard !speechQueue.isEmpty else {
+            isProcessingQueue = false
+            return
+        }
+        
+        let next = speechQueue.removeFirst()
+        speakNow(next)
+    }
+    
+    // MARK: - System TTS (AVSpeechSynthesizer) — Fallback
     
     private func speakWithSystem(_ text: String) {
-        // Stop any current speech
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
         
-        // Configure audio session for playback
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default, options: [.duckOthers])
@@ -121,46 +174,72 @@ final class NudgyVoiceOutput: NSObject {
         utterance.voice = systemVoice
         utterance.pitchMultiplier = NudgyConfig.Voice.pitchMultiplier
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * NudgyConfig.Voice.rateMultiplier
-        utterance.volume = 1.0  // Max volume — NudgyConfig can lower if needed
+        utterance.volume = 1.0
         utterance.preUtteranceDelay = 0.2
         utterance.postUtteranceDelay = 0.1
         
-        isSpeaking = true
-        print("🔊 NudgyVoiceOutput: Speaking: \(text.prefix(60))...")
+        print("🔊 NudgyVoiceOutput: Speaking (system): \(text.prefix(60))...")
         synthesizer.speak(utterance)
     }
     
-    // MARK: - OpenAI TTS
+    // MARK: - OpenAI TTS (Primary — cute shimmer voice)
     
     private func speakWithOpenAI(_ text: String) {
-        isSpeaking = true
-        
         Task {
             do {
-                let audioData = try await NudgyLLMService.shared.textToSpeech(text: text)
+                let audioData = try await NudgyLLMService.shared.textToSpeech(
+                    text: text,
+                    voice: NudgyConfig.Voice.openAIVoice,
+                    speed: NudgyConfig.Voice.openAISpeed
+                )
                 
                 // Write to temp file and play
                 let tempURL = FileManager.default.temporaryDirectory
                     .appendingPathComponent("nudgy_speech_\(UUID().uuidString).mp3")
                 try audioData.write(to: tempURL)
+                self.pendingCleanupURL = tempURL
+                
+                // Configure audio session
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .default, options: [.duckOthers])
+                try session.setActive(true, options: .notifyOthersOnDeactivation)
                 
                 let player = try AVAudioPlayer(contentsOf: tempURL)
+                player.delegate = self
                 self.audioPlayer = player
+                
+                print("🔊 NudgyVoiceOutput: Speaking (OpenAI \(NudgyConfig.Voice.openAIVoice)): \(text.prefix(60))... [\(String(format: "%.1f", player.duration))s]")
                 player.play()
                 
-                // Clean up after playback
-                Task {
-                    try? await Task.sleep(for: .seconds(player.duration + 0.5))
-                    try? FileManager.default.removeItem(at: tempURL)
-                    self.isSpeaking = false
-                }
             } catch {
                 #if DEBUG
                 print("⚠️ OpenAI TTS failed: \(error). Falling back to system TTS.")
                 #endif
-                // Fallback to system TTS
                 self.speakWithSystem(text)
             }
+        }
+    }
+    
+    // MARK: - Cleanup
+    
+    private func cleanupTempFile() {
+        if let url = pendingCleanupURL {
+            try? FileManager.default.removeItem(at: url)
+            pendingCleanupURL = nil
+        }
+    }
+    
+    private func finishedSpeaking() {
+        cleanupTempFile()
+        audioPlayer = nil
+        
+        // Process next in queue, or mark done
+        if !speechQueue.isEmpty {
+            processQueue()
+        } else {
+            isSpeaking = false
+            isProcessingQueue = false
+            print("🔊 NudgyVoiceOutput: All speech finished")
         }
     }
     
@@ -194,21 +273,39 @@ final class NudgyVoiceOutput: NSObject {
     }
 }
 
-// MARK: - AVSpeechSynthesizerDelegate
+// MARK: - AVSpeechSynthesizerDelegate (System TTS fallback)
 
 extension NudgyVoiceOutput: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
-        print("🔊 NudgyVoiceOutput: didStart speaking")
+        print("🔊 NudgyVoiceOutput: didStart speaking (system)")
         Task { @MainActor in self.isSpeaking = true }
     }
     
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        print("🔊 NudgyVoiceOutput: didFinish speaking")
-        Task { @MainActor in self.isSpeaking = false }
+        print("🔊 NudgyVoiceOutput: didFinish speaking (system)")
+        Task { @MainActor in self.finishedSpeaking() }
     }
     
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        print("🔊 NudgyVoiceOutput: didCancel speaking")
-        Task { @MainActor in self.isSpeaking = false }
+        print("🔊 NudgyVoiceOutput: didCancel speaking (system)")
+        Task { @MainActor in
+            self.cleanupTempFile()
+            self.isSpeaking = false
+            self.isProcessingQueue = false
+        }
+    }
+}
+
+// MARK: - AVAudioPlayerDelegate (OpenAI TTS)
+
+extension NudgyVoiceOutput: AVAudioPlayerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        print("🔊 NudgyVoiceOutput: didFinish playing (OpenAI, success=\(flag))")
+        Task { @MainActor in self.finishedSpeaking() }
+    }
+    
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: (any Error)?) {
+        print("⚠️ NudgyVoiceOutput: decode error: \(error?.localizedDescription ?? "unknown")")
+        Task { @MainActor in self.finishedSpeaking() }
     }
 }

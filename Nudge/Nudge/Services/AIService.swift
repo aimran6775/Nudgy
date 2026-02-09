@@ -135,7 +135,7 @@ final class AIService {
             let session = LanguageModelSession(
                 instructions: "You are Nudgy, a helpful penguin assistant in an ADHD-friendly task app."
             )
-            try? await session.prewarm(promptPrefix: Prompt("The user just opened the app."))
+            session.prewarm(promptPrefix: Prompt("The user just opened the app."))
         }
     }
     

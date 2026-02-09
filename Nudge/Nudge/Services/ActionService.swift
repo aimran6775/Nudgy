@@ -135,6 +135,9 @@ extension Notification.Name {
     
     /// Posted when ActionService can't resolve a contact — view should show ContactPickerView
     static let nudgeNeedsContactPicker = Notification.Name("nudgeNeedsContactPicker")
+    
+    /// Posted when TTS was skipped (voice disabled) — voice conversation loop should auto-resume listening
+    static let nudgyTTSSkipped = Notification.Name("nudgyTTSSkipped")
 }
 
 // MARK: - Message Compose View (UIViewControllerRepresentable)

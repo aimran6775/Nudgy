@@ -154,6 +154,9 @@ final class PenguinState {
     /// The current partial (streaming) response text.
     var streamingText: String = ""
     
+    /// Whether voice conversation mode is active (auto-listen → speak → auto-listen loop)
+    var isVoiceConversationActive: Bool = false
+    
     /// In-flight chat generation task (for cancellation on exit).
     private var chatTask: Task<Void, Never>?
     

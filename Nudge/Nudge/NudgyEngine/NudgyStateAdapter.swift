@@ -51,7 +51,11 @@ final class NudgyStateAdapter {
                 text,
                 modelContext: modelContext
             ) { [weak state] partial in
+                // Update streaming text AND the speech bubble in real-time
                 state?.streamingText = partial
+                if !partial.isEmpty {
+                    state?.say(partial, style: .speech, autoDismiss: nil)
+                }
             }
             
             guard let state = self.penguinState else {
@@ -59,9 +63,38 @@ final class NudgyStateAdapter {
                 return
             }
             
+            // Process side effects FIRST so task feedback appears immediately
+            let isBrainDump = NudgyConversationManager.shared.isBrainDumpMode
+            var taskCount = 0
+            for effect in response.sideEffects {
+                switch effect {
+                case .taskCreated(let content):
+                    taskCount += 1
+                    if isBrainDump {
+                        state.addSystemMessage("📝 Captured: \(content)")
+                    } else {
+                        state.addSystemMessage("📝 Added: \(content)")
+                    }
+                case .taskCompleted(let content):
+                    state.addSystemMessage("✅ Done: \(content)")
+                case .taskSnoozed(let content):
+                    state.addSystemMessage("💤 Snoozed: \(content)")
+                case .memoryLearned(let fact, _):
+                    #if DEBUG
+                    print("🧠 Learned: \(fact)")
+                    #endif
+                }
+            }
+            
+            // In brain dump mode, show running total
+            if isBrainDump && taskCount > 0 {
+                let total = NudgyConversationManager.shared.conversationStore.tasksCreatedCount
+                state.addSystemMessage("🐧 Total captured: \(total) task\(total == 1 ? "" : "s")")
+            }
+            
             // Finalize response
             let responseText = response.text.isEmpty ? state.streamingText : response.text
-            print("🧠 StateAdapter: Got response (\(responseText.count) chars): '\(responseText.prefix(100))'")
+            print("🧠 StateAdapter: Got response (\(responseText.count) chars, \(taskCount) tasks): '\(responseText.prefix(100))'")
             
             if !responseText.isEmpty {
                 state.addNudgyMessage(responseText)
@@ -69,38 +102,37 @@ final class NudgyStateAdapter {
                 // Set expression based on content
                 state.expression = NudgyEmotionMapper.expressionForResponse(responseText)
                 
-                // Show as speech bubble
+                // Show final response as speech bubble
                 let wordCount = responseText.split(separator: " ").count
-                let readTime = max(4.0, min(10.0, Double(wordCount) * 0.4))
+                let readTime = max(3.0, min(8.0, Double(wordCount) * 0.3))
                 state.say(responseText, style: .speech, autoDismiss: readTime)
+                
+                // CRITICAL: Ensure audio session is configured for playback
+                NudgyVoiceOutput.shared.prepareForPlayback()
                 
                 // Speak aloud
                 print("🧠 StateAdapter: Speaking response aloud")
-                NudgyVoiceOutput.shared.speak(responseText)
+                let willSpeak = NudgyVoiceOutput.shared.speak(responseText)
                 
-                // Process side effects
-                for effect in response.sideEffects {
-                    switch effect {
-                    case .taskCreated(let content):
-                        state.addSystemMessage("📝 Added: \(content)")
-                    case .taskCompleted(let content):
-                        state.addSystemMessage("✅ Done: \(content)")
-                    case .taskSnoozed(let content):
-                        state.addSystemMessage("💤 Snoozed: \(content)")
-                    case .memoryLearned(let fact, _):
-                        #if DEBUG
-                        print("🧠 Learned: \(fact)")
-                        #endif
-                    }
+                // If TTS was skipped (voice disabled or empty text), post a notification
+                // so the voice conversation loop can auto-resume listening without
+                // waiting for isSpeaking to transition.
+                if !willSpeak && state.isVoiceConversationActive {
+                    print("🧠 StateAdapter: TTS skipped, posting ttsSkipped notification")
+                    // Brief delay to let UI settle, then notify
+                    try? await Task.sleep(for: .milliseconds(300))
+                    NotificationCenter.default.post(name: .nudgyTTSSkipped, object: nil)
                 }
             }
             
             state.isChatGenerating = false
             
-            // Return to idle after response is read
-            try? await Task.sleep(for: .seconds(5.0))
-            if state.interactionMode == .chatting {
-                state.expression = .idle
+            // Return to idle after response is read (but not during voice conversation — loop handles it)
+            if !state.isVoiceConversationActive {
+                try? await Task.sleep(for: .seconds(4.0))
+                if state.interactionMode == .chatting {
+                    state.expression = .idle
+                }
             }
         }
     }
@@ -165,9 +197,11 @@ final class NudgyStateAdapter {
         ) { [weak state] upgraded in
             guard let state, state.expression == .happy else { return }
             state.say(upgraded, style: .speech, autoDismiss: 3.0)
+            NudgyVoiceOutput.shared.speakReaction(upgraded)
         }
         
         state.say(instant, style: .speech, autoDismiss: 2.5)
+        NudgyVoiceOutput.shared.speakReaction(instant)
         
         Task {
             try? await Task.sleep(for: .seconds(2.0))
@@ -189,9 +223,11 @@ final class NudgyStateAdapter {
         ) { [weak state] upgraded in
             guard let state, state.expression == .thumbsUp else { return }
             state.say(upgraded, style: .whisper, autoDismiss: 2.5)
+            NudgyVoiceOutput.shared.speakReaction(upgraded)
         }
         
         state.say(instant, style: .whisper, autoDismiss: 2.0)
+        NudgyVoiceOutput.shared.speakReaction(instant)
         
         Task {
             try? await Task.sleep(for: .seconds(1.5))
