@@ -273,6 +273,9 @@ struct AntarcticEnvironment: View {
     /// Current level — drives flag/banner on cliff.
     var level: Int = 1
 
+    /// Current stage tier — drives cliff decorations.
+    var stage: StageTier = .bareIce
+
     var sceneWidth: CGFloat = 390
     var sceneHeight: CGFloat = 844
 
@@ -338,6 +341,9 @@ struct AntarcticEnvironment: View {
 
             // Layer 7b: Cliff props (fish bucket, flag, lantern)
             cliffProps
+
+            // Layer 7c: Stage decorations (evolves with level tier)
+            StageDecorations(stage: stage, time: time, mood: mood)
 
             // Layer 8: Snow particles
             if !reduceMotion {
@@ -1391,26 +1397,26 @@ private struct CliffLantern: View {
 // MARK: - Previews
 
 #Preview("Dawn — Warming") {
-    AntarcticEnvironment(mood: .warming, unlockedProps: [], fishCount: 12, level: 2, timeOverride: .dawn)
+    AntarcticEnvironment(mood: .warming, unlockedProps: [], fishCount: 12, level: 2, stage: .bareIce, timeOverride: .dawn)
         .ignoresSafeArea()
 }
 
-#Preview("Day — Productive") {
-    AntarcticEnvironment(mood: .productive, unlockedProps: ["igloo"], fishCount: 35, level: 5, timeOverride: .day)
+#Preview("Day — Fishing Pier") {
+    AntarcticEnvironment(mood: .productive, unlockedProps: ["igloo"], fishCount: 35, level: 7, stage: .fishingPier, timeOverride: .day)
         .ignoresSafeArea()
 }
 
-#Preview("Dusk — Cold") {
-    AntarcticEnvironment(mood: .cold, unlockedProps: [], fishCount: 0, level: 1, timeOverride: .dusk)
+#Preview("Dusk — Snow Nest") {
+    AntarcticEnvironment(mood: .warming, unlockedProps: [], fishCount: 10, level: 5, stage: .snowNest, timeOverride: .dusk)
         .ignoresSafeArea()
 }
 
-#Preview("Night — Golden") {
-    AntarcticEnvironment(mood: .golden, unlockedProps: ["igloo", "campfire", "lantern"], fishCount: 50, level: 8, timeOverride: .night)
+#Preview("Night — Cozy Camp") {
+    AntarcticEnvironment(mood: .golden, unlockedProps: ["igloo", "campfire", "lantern"], fishCount: 50, level: 12, stage: .cozyCamp, timeOverride: .night)
         .ignoresSafeArea()
 }
 
-#Preview("Night — Stormy") {
-    AntarcticEnvironment(mood: .stormy, unlockedProps: [], fishCount: 5, level: 1, timeOverride: .night)
+#Preview("Night — Summit Lodge") {
+    AntarcticEnvironment(mood: .productive, unlockedProps: ["lantern"], fishCount: 80, level: 15, stage: .summitLodge, timeOverride: .night)
         .ignoresSafeArea()
 }

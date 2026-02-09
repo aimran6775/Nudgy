@@ -40,6 +40,11 @@ struct NudgyHomeView: View {
     @State private var isVoiceConversation = false
     /// Tracks if we're waiting for Nudgy to finish speaking before auto-resuming
     @State private var awaitingTTSFinish = false
+    
+    /// Active task queue for the task bubble
+    @State private var activeQueue: [NudgeItem] = []
+    /// Fish HUD position for reward animation target
+    @State private var fishHUDPosition: CGPoint = .zero
 
 
     var body: some View {
@@ -62,6 +67,13 @@ struct NudgyHomeView: View {
 
                 // ★ Nudgy — the whole point, positioned on the ice cliff
                 nudgyCharacter
+
+                // Active task bubble — the "one thing" card near Nudgy
+                if !isVoiceConversation && !isListeningToUser && !showInlineChat {
+                    activeTaskBubble
+                        .padding(.horizontal, DesignTokens.spacingLG)
+                        .transition(.scale(scale: 0.9).combined(with: .opacity))
+                }
 
                 // Listening indicator (when mic is active)
                 if isListeningToUser {
@@ -95,11 +107,18 @@ struct NudgyHomeView: View {
                 inlineChatBar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+
+            // Fish reward animation overlay
+            FishRewardOverlay()
         }
         .preferredColorScheme(.dark)
         .onAppear {
             greetIfNeeded()
             startBreathingAnimation()
+            refreshActiveQueue()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .nudgeDataChanged)) { _ in
+            refreshActiveQueue()
         }
         .onChange(of: speechService.state) { _, newState in
             handleSpeechStateChange(newState)
@@ -159,6 +178,7 @@ struct NudgyHomeView: View {
                     unlockedProps: RewardService.shared.unlockedProps,
                     fishCount: RewardService.shared.snowflakes,
                     level: RewardService.shared.level,
+                    stage: StageTier.from(level: RewardService.shared.level),
                     sceneWidth: geo.size.width,
                     sceneHeight: geo.size.height
                 )
@@ -408,6 +428,15 @@ struct NudgyHomeView: View {
                 streak: RewardService.shared.currentStreak,
                 levelProgress: RewardService.shared.levelProgress,
                 tasksToday: RewardService.shared.tasksCompletedToday
+            )
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear {
+                            let frame = geo.frame(in: .global)
+                            fishHUDPosition = CGPoint(x: frame.midX, y: frame.midY)
+                        }
+                }
             )
 
             Spacer()
@@ -1092,6 +1121,76 @@ struct NudgyHomeView: View {
 
     private func startBreathingAnimation() {
         breatheAnimation = true
+    }
+
+    // MARK: - Active Task Queue
+
+    private func refreshActiveQueue() {
+        let repo = NudgeRepository(modelContext: modelContext)
+        activeQueue = repo.fetchActiveQueue()
+    }
+
+    /// The active task bubble showing the current top-of-queue task.
+    private var activeTaskBubble: some View {
+        ActiveTaskBubble(
+            item: activeQueue.first,
+            queuePosition: activeQueue.isEmpty ? 0 : 1,
+            queueTotal: activeQueue.count,
+            onDone: {
+                guard let item = activeQueue.first else { return }
+                let repo = NudgeRepository(modelContext: modelContext)
+                repo.markDone(item)
+
+                // Trigger fish reward animation
+                let earned = RewardService.shared.recordCompletion(
+                    context: modelContext,
+                    isAllClear: activeQueue.count <= 1
+                )
+                FishRewardEngine.shared.spawnFish(
+                    count: min(earned, 8),
+                    from: CGPoint(x: UIScreen.main.bounds.midX, y: UIScreen.main.bounds.midY + 80),
+                    to: fishHUDPosition
+                )
+
+                // Haptic + penguin celebration
+                HapticService.shared.prepare()
+                penguinState.expression = .celebrating
+                Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if penguinState.expression == .celebrating {
+                        penguinState.expression = .idle
+                    }
+                }
+
+                // Update mood
+                RewardService.shared.updateMood(
+                    context: modelContext,
+                    isAllClear: activeQueue.count <= 1
+                )
+
+                withAnimation(.spring(response: 0.4)) {
+                    refreshActiveQueue()
+                }
+
+                NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
+            },
+            onSkip: {
+                guard let item = activeQueue.first else { return }
+                let repo = NudgeRepository(modelContext: modelContext)
+                repo.skip(item)
+
+                withAnimation(.spring(response: 0.4)) {
+                    refreshActiveQueue()
+                }
+            },
+            onTap: {
+                // Navigate to OneThing view
+                NotificationCenter.default.post(
+                    name: Notification.Name("nudgeNavigateToOneThing"),
+                    object: nil
+                )
+            }
+        )
     }
 }
 

@@ -79,10 +79,12 @@ nonisolated enum NudgyConfig {
         }
         
         /// TTS pitch multiplier (1.0 = normal, >1.0 = higher).
-        static let pitchMultiplier: Float = 1.12
+        /// Slightly above neutral for gentle warmth — not squeaky, not deep.
+        static let pitchMultiplier: Float = 1.04
         
         /// TTS speech rate multiplier.
-        static let rateMultiplier: Float = 0.92
+        /// Deliberately unhurried — Pooh-inspired pacing. Let words breathe.
+        static let rateMultiplier: Float = 0.82
         
         /// TTS volume (0.0-1.0).
         static let volume: Float = 0.85
@@ -102,9 +104,9 @@ nonisolated enum NudgyConfig {
         
         /// OpenAI TTS voice name. Persisted in UserDefaults.
         /// Options: alloy, echo, fable, onyx, nova, shimmer
-        /// shimmer = cutest, most youthful voice for Nudgy's penguin personality
+        /// nova = warm, friendly, unhurried — perfect for gentle Pooh-penguin companion
         static var openAIVoice: String {
-            get { UserDefaults.standard.string(forKey: "nudgyOpenAIVoice") ?? "shimmer" }
+            get { UserDefaults.standard.string(forKey: "nudgyOpenAIVoice") ?? "nova" }
             set { UserDefaults.standard.set(newValue, forKey: "nudgyOpenAIVoice") }
         }
         
@@ -113,19 +115,20 @@ nonisolated enum NudgyConfig {
         
         /// Available OpenAI voices with display metadata.
         static let availableVoices: [(id: String, name: String, description: String)] = [
-            ("shimmer", "Shimmer", "Cute & bubbly"),
-            ("nova", "Nova", "Warm & friendly"),
+            ("nova", "Nova", "Warm & gentle (recommended)"),
+            ("fable", "Fable", "Soft & expressive"),
+            ("shimmer", "Shimmer", "Bright & upbeat"),
             ("alloy", "Alloy", "Balanced & clear"),
-            ("fable", "Fable", "Expressive & warm"),
             ("echo", "Echo", "Calm & smooth"),
-            ("onyx", "Onyx", "Deep & confident"),
+            ("onyx", "Onyx", "Deep & steady"),
         ]
         
-        /// Speed for OpenAI TTS (0.25-4.0, default 1.0)
+        /// Speed for OpenAI TTS (0.25-4.0, default 0.92)
+        /// Slightly slower than normal for unhurried, warm delivery.
         static var openAISpeed: Double {
             get {
                 let stored = UserDefaults.standard.double(forKey: "nudgyOpenAISpeed")
-                return stored > 0 ? stored : 1.0
+                return stored > 0 ? stored : 0.92
             }
             set { UserDefaults.standard.set(newValue, forKey: "nudgyOpenAISpeed") }
         }

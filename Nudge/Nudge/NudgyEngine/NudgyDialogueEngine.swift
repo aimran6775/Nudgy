@@ -2,10 +2,10 @@
 //  NudgyDialogueEngine.swift
 //  Nudge
 //
-//  Phase 12: Modular dialogue engine.
-//  Replaces PenguinDialogueService with a cleaner architecture.
+//  Modular dialogue engine with ADHD-informed strategies.
 //  Generates contextual one-liners using NudgyLLMService + curated fallbacks.
-//  All dialogue flows through here — greetings, reactions, idle chatter.
+//  Integrates NudgyADHDKnowledge for research-backed response shaping.
+//  All dialogue flows through here — greetings, reactions, check-ins, support.
 //
 
 import Foundation
@@ -13,6 +13,7 @@ import Foundation
 // MARK: - NudgyDialogueEngine
 
 /// Generates contextual dialogue for Nudgy using OpenAI + curated fallbacks.
+/// Enriched with ADHD-aware emotional detection and response strategies.
 @MainActor
 final class NudgyDialogueEngine {
     
@@ -36,17 +37,23 @@ final class NudgyDialogueEngine {
         
         var greeting = lines.randomElement()!
         if let name = name {
-            greeting = greeting.replacingOccurrences(of: "!", with: ", \(name)!")
+            // Insert name naturally — replace first comma-space or period with name
+            if greeting.contains(", ") {
+                greeting = greeting.replacingOccurrences(of: ". ", with: ", \(name). ", options: [], range: greeting.range(of: ". "))
+            } else {
+                greeting = greeting.replacingOccurrences(of: "…", with: ", \(name). …", options: [], range: greeting.range(of: "…"))
+            }
         }
         
+        // Task context — gentle, not hype
         if activeTaskCount == 0 {
-            greeting += " " + String(localized: "Clean slate! No tasks. Very zen.")
+            greeting += " " + String(localized: "Nothing waiting. …That's kind of nice.")
         } else if activeTaskCount == 1 {
-            greeting += " " + String(localized: "Just one fish to catch today!")
+            greeting += " " + String(localized: "Just one thing today. Simple.")
         } else if activeTaskCount <= 3 {
-            greeting += " " + String(localized: "\(activeTaskCount) things lined up. Totally doable!")
+            greeting += " " + String(localized: "\(activeTaskCount) things. …One at a time, though.")
         } else {
-            greeting += " " + String(localized: "\(activeTaskCount) tasks? One fish at a time.")
+            greeting += " " + String(localized: "\(activeTaskCount) things waiting. …But just the next one matters.")
         }
         
         return greeting
@@ -82,17 +89,17 @@ final class NudgyDialogueEngine {
     
     // MARK: - Task Reactions
     
-    /// Curated completion celebration.
+    /// Curated completion acknowledgment (gentle, not hype).
     func curatedCompletionReaction(remainingCount: Int) -> String {
         if remainingCount == 0 {
             return NudgyPersonality.CuratedLines.allDoneCelebrations.randomElement()!
         } else if remainingCount == 1 {
-            return String(localized: "Just one more to go! 💪")
+            return String(localized: "One more. …Whenever you're ready 💙")
         }
         return NudgyPersonality.CuratedLines.completionCelebrations.randomElement()!
     }
     
-    /// AI-powered completion celebration.
+    /// AI-powered completion acknowledgment.
     func smartCompletionReaction(taskContent: String, remainingCount: Int) async -> String {
         guard NudgyConfig.isAvailable else {
             return curatedCompletionReaction(remainingCount: remainingCount)
@@ -179,18 +186,18 @@ final class NudgyDialogueEngine {
     
     // MARK: - Task Presentation
     
-    /// Curated task presentation.
+    /// Curated task presentation (gentle, not hype).
     func curatedTaskPresentation(content: String, position: Int, total: Int, isStale: Bool, isOverdue: Bool) -> String {
         if isOverdue {
-            return String(localized: "Hey! This one needs some love! Let's do it together ⚡")
+            return String(localized: "This one's been waiting. …Whenever you're ready 💙")
         } else if isStale {
-            return String(localized: "Sooo... this has been chilling here a while 🧊")
+            return String(localized: "This has been here a while. …Still need it, or can it go? 🧊")
         } else if position == 1 && total == 1 {
-            return String(localized: "LAST ONE! *bouncing* You're so close! 🏁")
+            return String(localized: "Just this one. …Small and doable 🐧")
         } else if position == 1 {
-            return String(localized: "Ooh, let's start with this one! 🐟")
+            return String(localized: "Let's start here. …Just this one for now 💙")
         } else {
-            return String(localized: "Next fish! Keep swimming! 🐟")
+            return String(localized: "Next one. …One at a time 🐧")
         }
     }
     
@@ -223,12 +230,117 @@ final class NudgyDialogueEngine {
     
     func brainDumpComplete(taskCount: Int) -> String {
         if taskCount == 0 {
-            return String(localized: "Hmm, I didn't catch any tasks in there! Try again? 🐧")
+            return String(localized: "Hmm, I didn't catch any tasks in there. …Want to try again? 🐧")
         } else if taskCount == 1 {
-            return String(localized: "Found one fish! Nice and focused! 🐟")
+            return String(localized: "One thing captured. …Nice and focused 💙")
         } else {
-            return String(localized: "*sorts \(taskCount) fish into buckets* All organized! 📋")
+            return String(localized: "Got \(taskCount) things sorted. …All organized on the iceberg 🧊")
         }
+    }
+    
+    // MARK: - ADHD-Specific Support (NEW)
+    
+    /// Emotional check-in — occasionally asks how they're doing (not about tasks).
+    func emotionalCheckIn(lastMood: String? = nil, daysSinceLastCheckIn: Int = 0) async -> String {
+        guard NudgyConfig.isAvailable else {
+            return NudgyPersonality.CuratedLines.emotionalCheckins.randomElement()!
+        }
+        
+        let prompt = NudgyPersonality.emotionalCheckInPrompt(
+            lastMood: lastMood,
+            daysSinceLastCheckIn: daysSinceLastCheckIn
+        )
+        
+        if let response = await NudgyConversationManager.shared.generateOneShotResponse(prompt: prompt) {
+            return response
+        }
+        return NudgyPersonality.CuratedLines.emotionalCheckins.randomElement()!
+    }
+    
+    /// Body doubling start message.
+    func bodyDoublingStart(taskContent: String) async -> String {
+        guard NudgyConfig.isAvailable else {
+            return NudgyADHDKnowledge.BodyDoubling.startMessage(taskContent: taskContent)
+        }
+        
+        let prompt = NudgyPersonality.bodyDoublingPrompt(taskContent: taskContent)
+        if let response = await NudgyConversationManager.shared.generateOneShotResponse(prompt: prompt) {
+            return response
+        }
+        return NudgyADHDKnowledge.BodyDoubling.startMessage(taskContent: taskContent)
+    }
+    
+    /// Body doubling periodic check-in.
+    func bodyDoublingCheckIn(minutesElapsed: Int) -> String? {
+        NudgyADHDKnowledge.BodyDoubling.checkInMessage(minutesElapsed: minutesElapsed)
+    }
+    
+    /// Body doubling session end.
+    func bodyDoublingEnd(minutesWorked: Int) -> String {
+        NudgyADHDKnowledge.BodyDoubling.endMessage(minutesWorked: minutesWorked)
+    }
+    
+    /// Task transition support.
+    func transitionSupport(from previousTask: String?, to nextTask: String) async -> String {
+        guard NudgyConfig.isAvailable else {
+            return NudgyADHDKnowledge.TransitionSupport.transitionMessage(
+                from: previousTask, to: nextTask
+            )
+        }
+        
+        let prompt = NudgyPersonality.transitionPrompt(fromTask: previousTask, toTask: nextTask)
+        if let response = await NudgyConversationManager.shared.generateOneShotResponse(prompt: prompt) {
+            return response
+        }
+        return NudgyADHDKnowledge.TransitionSupport.transitionMessage(
+            from: previousTask, to: nextTask
+        )
+    }
+    
+    /// Paralysis-breaking support for stuck tasks.
+    func paralysisSupport(staleTasks: [String]) async -> String {
+        guard NudgyConfig.isAvailable, !staleTasks.isEmpty else {
+            return NudgyPersonality.CuratedLines.paralysisBreakers.randomElement()!
+        }
+        
+        let prompt = NudgyPersonality.paralysisPrompt(staleTasks: staleTasks)
+        if let response = await NudgyConversationManager.shared.generateOneShotResponse(prompt: prompt) {
+            return response
+        }
+        return NudgyPersonality.CuratedLines.paralysisBreakers.randomElement()!
+    }
+    
+    /// Overwhelm support — when user seems to have too much going on.
+    func overwhelmSupport() -> String {
+        NudgyPersonality.CuratedLines.overwhelmSupport.randomElement()!
+    }
+    
+    /// Hyperfocus check-in — gentle time awareness during long sessions.
+    func hyperfocusCheckIn() -> String {
+        NudgyPersonality.CuratedLines.hyperfocusCheckins.randomElement()!
+    }
+    
+    /// Emotional support based on detected mood.
+    func emotionalResponse(for mood: NudgyADHDKnowledge.EmotionalRegulation.DetectedMood) -> String {
+        let strategy = NudgyADHDKnowledge.EmotionalRegulation.strategy(for: mood)
+        return strategy.curatedResponse ?? NudgyPersonality.CuratedLines.emotionalSupport.randomElement()!
+    }
+    
+    /// Get micro-step suggestion for a stuck task.
+    func microStepSuggestion(taskContent: String) -> String {
+        let steps = NudgyADHDKnowledge.ExecutiveFunction.microStepsFor(taskContent: taskContent)
+        let step = steps.first ?? "Just look at it. That's a start"
+        return "\(step). …That's enough for now 🐧"
+    }
+    
+    /// Gentle time context.
+    func timeContext() -> String? {
+        NudgyADHDKnowledge.TimeAwareness.gentleTimeContext(for: .now)
+    }
+    
+    /// Streak acknowledgment.
+    func streakMessage(days: Int) -> String? {
+        NudgyADHDKnowledge.PatternRecognition.streakMessage(consecutiveDaysActive: days)
     }
     
     // MARK: - Error

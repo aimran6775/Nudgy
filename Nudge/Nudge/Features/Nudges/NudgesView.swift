@@ -59,6 +59,15 @@ struct NudgesView: View {
     
     // Live Activity prompt
     @State private var showLiveActivityPrompt = false
+    
+    // Pick For Me
+    @State private var pickedItem: NudgeItem?
+    @State private var showPickedCard = false
+    
+    // Inline micro-steps (Phase 3)
+    @State private var expandedMicroSteps: Set<UUID> = []
+    @State private var microStepsCache: [UUID: [MicroStep]] = [:]
+    @State private var microStepsLoading: Set<UUID> = []
 
     var body: some View {
         NavigationStack {
@@ -75,6 +84,42 @@ struct NudgesView: View {
                 if showUndoToast {
                     undoToastView
                         .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                
+                // Floating "Pick For Me" button
+                if !horizonGroups.isEmpty && horizonGroups.today.count >= 2 && !showPickedCard {
+                    VStack {
+                        Spacer()
+                        PickForMeButton {
+                            pickRandomTask()
+                        }
+                        .padding(.bottom, 90)
+                    }
+                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                }
+                
+                // Picked task focus card
+                if showPickedCard, let item = pickedItem {
+                    PickedTaskCard(
+                        item: item,
+                        onDone: {
+                            dismissPickedCard()
+                            markDoneWithUndo(item)
+                        },
+                        onSnooze: {
+                            dismissPickedCard()
+                            showSnoozeFor = item
+                        },
+                        onStartFocus: {
+                            dismissPickedCard()
+                            editingItem = item
+                        },
+                        onDismiss: {
+                            dismissPickedCard()
+                        }
+                    )
+                    .transition(.opacity)
+                    .zIndex(100)
                 }
             }
             .navigationTitle(String(localized: "Nudges"))
@@ -449,6 +494,30 @@ struct NudgesView: View {
             showUndoToast = false
         }
         undoItem = nil
+    }
+    
+    // MARK: - Pick For Me
+    
+    private func pickRandomTask() {
+        let candidates = horizonGroups.today
+        guard candidates.count >= 2 else { return }
+        
+        // Avoid picking the same item twice in a row
+        let filtered = candidates.filter { $0.id != pickedItem?.id }
+        let pool = filtered.isEmpty ? candidates : filtered
+        
+        guard let picked = pool.randomElement() else { return }
+        pickedItem = picked
+        
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            showPickedCard = true
+        }
+    }
+    
+    private func dismissPickedCard() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            showPickedCard = false
+        }
     }
 
     private var undoToastView: some View {
