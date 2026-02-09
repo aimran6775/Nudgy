@@ -40,7 +40,6 @@ struct NudgyHomeView: View {
     @State private var isVoiceConversation = false
     /// Tracks if we're waiting for Nudgy to finish speaking before auto-resuming
     @State private var awaitingTTSFinish = false
-    
 
 
     var body: some View {
@@ -158,6 +157,8 @@ struct NudgyHomeView: View {
                 AntarcticEnvironment(
                     mood: RewardService.shared.environmentMood,
                     unlockedProps: RewardService.shared.unlockedProps,
+                    fishCount: RewardService.shared.snowflakes,
+                    level: RewardService.shared.level,
                     sceneWidth: geo.size.width,
                     sceneHeight: geo.size.height
                 )
@@ -400,36 +401,36 @@ struct NudgyHomeView: View {
 
             Spacer()
 
+            // Altitude HUD — stats overlay
+            AltitudeHUD(
+                level: RewardService.shared.level,
+                fishCount: RewardService.shared.snowflakes,
+                streak: RewardService.shared.currentStreak,
+                levelProgress: RewardService.shared.levelProgress,
+                tasksToday: RewardService.shared.tasksCompletedToday
+            )
+
+            Spacer()
+
+            // Wardrobe button
             Button {
                 HapticService.shared.prepare()
                 showWardrobe = true
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "snowflake")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.cyan)
-                        .symbolRenderingMode(.hierarchical)
-
-                    Text("\(RewardService.shared.snowflakes)")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(DesignTokens.textPrimary)
-
-                    Image(systemName: "tshirt.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(DesignTokens.accentActive)
-                        .symbolRenderingMode(.hierarchical)
-                }
-                .padding(.horizontal, DesignTokens.spacingMD)
-                .padding(.vertical, DesignTokens.spacingXS)
-                .background(
-                    Capsule()
-                        .fill(.ultraThinMaterial)
-                )
-                .glassEffect(.regular.interactive(), in: .capsule)
+                Image(systemName: "tshirt.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(DesignTokens.accentActive)
+                    .symbolRenderingMode(.hierarchical)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                    )
+                    .glassEffect(.regular.interactive(), in: .circle)
             }
             .buttonStyle(.plain)
             .nudgeAccessibility(
-                label: String(localized: "Wardrobe — \(RewardService.shared.snowflakes) snowflakes"),
+                label: String(localized: "Wardrobe"),
                 hint: String(localized: "Open the wardrobe to dress up Nudgy"),
                 traits: .isButton
             )

@@ -267,6 +267,12 @@ struct AntarcticEnvironment: View {
     let mood: EnvironmentMood
     let unlockedProps: Set<String>
 
+    /// Number of fish (snowflakes) the player has — drives fish bucket fill.
+    var fishCount: Int = 0
+
+    /// Current level — drives flag/banner on cliff.
+    var level: Int = 1
+
     var sceneWidth: CGFloat = 390
     var sceneHeight: CGFloat = 844
 
@@ -329,6 +335,9 @@ struct AntarcticEnvironment: View {
 
             // Layer 7: Ice cliff platform (where Nudgy stands)
             iceCliffPlatform
+
+            // Layer 7b: Cliff props (fish bucket, flag, lantern)
+            cliffProps
 
             // Layer 8: Snow particles
             if !reduceMotion {
@@ -729,6 +738,34 @@ struct AntarcticEnvironment: View {
             }
             .frame(height: sceneHeight * (1 - Self.cliffSurfaceY) + 10)
         }
+    }
+
+    // MARK: - Layer 7b: Cliff Props
+
+    /// Props that sit on top of the ice cliff: fish bucket, level flag, lantern.
+    /// These are drawn at the cliff surface Y so they appear to rest on the platform.
+    private var cliffProps: some View {
+        GeometryReader { geo in
+            let surfaceY = geo.size.height * Self.cliffSurfaceY - 8
+
+            // Fish bucket — left side of cliff
+            FishBucket(fishCount: fishCount, tint: time.icicleColor)
+                .frame(width: 36, height: 40)
+                .position(x: geo.size.width * 0.12, y: surfaceY - 14)
+
+            // Level flag — right side of cliff
+            LevelFlag(level: level, time: time)
+                .frame(width: 24, height: 50)
+                .position(x: geo.size.width * 0.88, y: surfaceY - 20)
+
+            // Lantern (unlockable prop)
+            if unlockedProps.contains("lantern") || time == .night {
+                CliffLantern(time: time)
+                    .frame(width: 16, height: 24)
+                    .position(x: geo.size.width * 0.75, y: surfaceY - 8)
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     // MARK: - Layer 8: Snow Particles
@@ -1140,29 +1177,240 @@ private struct IceTextureLines: View {
     }
 }
 
+// MARK: - Fish Bucket Prop
+
+/// A small wooden bucket sitting on the cliff edge, filled with golden fish.
+/// Fish count drives the fill level of the bucket.
+private struct FishBucket: View {
+    let fishCount: Int
+    let tint: Color
+
+    /// Fill level 0–1 based on fish count (caps at 50 for visual full).
+    private var fillLevel: CGFloat {
+        min(1.0, CGFloat(fishCount) / 50.0)
+    }
+
+    var body: some View {
+        Canvas { context, size in
+            let w = size.width
+            let h = size.height
+
+            // Bucket body (trapezoid)
+            let bucketPath = Path { p in
+                p.move(to: CGPoint(x: w * 0.15, y: h * 0.25))
+                p.addLine(to: CGPoint(x: w * 0.08, y: h))
+                p.addLine(to: CGPoint(x: w * 0.92, y: h))
+                p.addLine(to: CGPoint(x: w * 0.85, y: h * 0.25))
+                p.closeSubpath()
+            }
+
+            // Bucket fill (fish inside)
+            let fillTop = h * (1.0 - fillLevel * 0.65) // fill from bottom
+            let fillPath = Path { p in
+                let leftX = w * 0.08 + (w * 0.15 - w * 0.08) * ((fillTop - h * 0.25) / (h - h * 0.25))
+                let rightX = w * 0.92 - (w * 0.92 - w * 0.85) * ((fillTop - h * 0.25) / (h - h * 0.25))
+                p.move(to: CGPoint(x: max(w * 0.08, leftX), y: fillTop))
+                p.addLine(to: CGPoint(x: w * 0.08, y: h))
+                p.addLine(to: CGPoint(x: w * 0.92, y: h))
+                p.addLine(to: CGPoint(x: min(w * 0.92, rightX), y: fillTop))
+                p.closeSubpath()
+            }
+
+            // Draw fill first (behind bucket)
+            if fishCount > 0 {
+                context.fill(fillPath, with: .linearGradient(
+                    Gradient(colors: [
+                        Color(hex: "FFB800").opacity(0.7),
+                        Color(hex: "FF8C00").opacity(0.5)
+                    ]),
+                    startPoint: CGPoint(x: w / 2, y: fillTop),
+                    endPoint: CGPoint(x: w / 2, y: h)
+                ))
+            }
+
+            // Bucket outline
+            context.stroke(bucketPath, with: .color(Color(hex: "8B6914").opacity(0.6)), lineWidth: 1.5)
+            context.fill(bucketPath, with: .color(Color(hex: "5A3E0A").opacity(0.3)))
+
+            // Bucket handle (arc)
+            let handlePath = Path { p in
+                p.addArc(
+                    center: CGPoint(x: w / 2, y: h * 0.25),
+                    radius: w * 0.28,
+                    startAngle: .degrees(180),
+                    endAngle: .degrees(0),
+                    clockwise: false
+                )
+            }
+            context.stroke(handlePath, with: .color(Color(hex: "8B6914").opacity(0.5)), lineWidth: 1.2)
+
+            // Tiny fish shapes in bucket
+            if fishCount > 0 {
+                let fishPositions: [(CGFloat, CGFloat)] = [
+                    (0.35, 0.7), (0.55, 0.75), (0.45, 0.85),
+                    (0.3, 0.8), (0.6, 0.65),
+                ]
+                let visibleFish = min(fishPositions.count, max(1, fishCount / 3))
+                for i in 0..<visibleFish {
+                    let pos = fishPositions[i]
+                    let fx = w * pos.0
+                    let fy = h * pos.1
+                    // Simple fish shape — tiny diamond
+                    let fishPath = Path { p in
+                        p.move(to: CGPoint(x: fx - 3, y: fy))
+                        p.addLine(to: CGPoint(x: fx, y: fy - 1.5))
+                        p.addLine(to: CGPoint(x: fx + 3, y: fy))
+                        p.addLine(to: CGPoint(x: fx, y: fy + 1.5))
+                        p.closeSubpath()
+                    }
+                    context.fill(fishPath, with: .color(Color(hex: "FFD700").opacity(0.8)))
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Level Flag
+
+/// A small flag/pennant on a pole, showing the current level number.
+private struct LevelFlag: View {
+    let level: Int
+    let time: AntarcticTimeOfDay
+
+    private var flagColor: Color {
+        switch time {
+        case .dawn:  return Color(hex: "FF6B88")
+        case .day:   return Color(hex: "4A9AC7")
+        case .dusk:  return Color(hex: "CC6B3A")
+        case .night: return Color(hex: "7B61FF")
+        }
+    }
+
+    var body: some View {
+        Canvas { context, size in
+            let w = size.width
+            let h = size.height
+
+            // Pole
+            let polePath = Path { p in
+                p.move(to: CGPoint(x: w * 0.5, y: 0))
+                p.addLine(to: CGPoint(x: w * 0.5, y: h))
+            }
+            context.stroke(polePath, with: .color(Color.white.opacity(0.4)), lineWidth: 1.5)
+
+            // Flag pennant (triangle)
+            let flagPath = Path { p in
+                p.move(to: CGPoint(x: w * 0.5, y: h * 0.05))
+                p.addLine(to: CGPoint(x: w, y: h * 0.15))
+                p.addLine(to: CGPoint(x: w * 0.5, y: h * 0.3))
+                p.closeSubpath()
+            }
+            context.fill(flagPath, with: .color(flagColor.opacity(0.7)))
+            context.stroke(flagPath, with: .color(flagColor.opacity(0.9)), lineWidth: 0.5)
+
+            // Level number on flag
+            let text = Text("\(level)").font(.system(size: 7, weight: .bold, design: .rounded)).foregroundColor(.white)
+            context.draw(
+                context.resolve(text),
+                at: CGPoint(x: w * 0.72, y: h * 0.17)
+            )
+
+            // Pole base — small circle
+            let basePath = Circle().path(in: CGRect(x: w * 0.35, y: h - 4, width: w * 0.3, height: 4))
+            context.fill(basePath, with: .color(Color.white.opacity(0.15)))
+        }
+    }
+}
+
+// MARK: - Cliff Lantern
+
+/// A small warm-glow lantern that appears at night or when unlocked.
+private struct CliffLantern: View {
+    let time: AntarcticTimeOfDay
+
+    private var glowColor: Color {
+        time == .night ? Color(hex: "FFB800").opacity(0.6) : Color(hex: "FFD080").opacity(0.4)
+    }
+
+    var body: some View {
+        ZStack {
+            // Glow halo
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [glowColor, glowColor.opacity(0.1), .clear],
+                        center: .center,
+                        startRadius: 2,
+                        endRadius: 18
+                    )
+                )
+                .frame(width: 36, height: 36)
+
+            // Lantern body
+            Canvas { context, size in
+                let w = size.width
+                let h = size.height
+
+                // Lantern base (small rectangle)
+                let bodyRect = CGRect(x: w * 0.25, y: h * 0.3, width: w * 0.5, height: h * 0.5)
+                context.fill(
+                    RoundedRectangle(cornerRadius: 2).path(in: bodyRect),
+                    with: .color(Color(hex: "8B6914").opacity(0.6))
+                )
+
+                // Glass panel (warm glow)
+                let glassRect = CGRect(x: w * 0.3, y: h * 0.35, width: w * 0.4, height: h * 0.4)
+                context.fill(
+                    RoundedRectangle(cornerRadius: 1).path(in: glassRect),
+                    with: .color(Color(hex: "FFD060").opacity(0.7))
+                )
+
+                // Top cap
+                let capRect = CGRect(x: w * 0.2, y: h * 0.25, width: w * 0.6, height: h * 0.08)
+                context.fill(
+                    RoundedRectangle(cornerRadius: 1).path(in: capRect),
+                    with: .color(Color(hex: "666").opacity(0.5))
+                )
+
+                // Handle
+                let handlePath = Path { p in
+                    p.addArc(
+                        center: CGPoint(x: w / 2, y: h * 0.25),
+                        radius: w * 0.2,
+                        startAngle: .degrees(180),
+                        endAngle: .degrees(0),
+                        clockwise: false
+                    )
+                }
+                context.stroke(handlePath, with: .color(Color(hex: "666").opacity(0.4)), lineWidth: 0.8)
+            }
+        }
+    }
+}
+
 // MARK: - Previews
 
 #Preview("Dawn — Warming") {
-    AntarcticEnvironment(mood: .warming, unlockedProps: [], timeOverride: .dawn)
+    AntarcticEnvironment(mood: .warming, unlockedProps: [], fishCount: 12, level: 2, timeOverride: .dawn)
         .ignoresSafeArea()
 }
 
 #Preview("Day — Productive") {
-    AntarcticEnvironment(mood: .productive, unlockedProps: ["igloo"], timeOverride: .day)
+    AntarcticEnvironment(mood: .productive, unlockedProps: ["igloo"], fishCount: 35, level: 5, timeOverride: .day)
         .ignoresSafeArea()
 }
 
 #Preview("Dusk — Cold") {
-    AntarcticEnvironment(mood: .cold, unlockedProps: [], timeOverride: .dusk)
+    AntarcticEnvironment(mood: .cold, unlockedProps: [], fishCount: 0, level: 1, timeOverride: .dusk)
         .ignoresSafeArea()
 }
 
 #Preview("Night — Golden") {
-    AntarcticEnvironment(mood: .golden, unlockedProps: ["igloo", "campfire"], timeOverride: .night)
+    AntarcticEnvironment(mood: .golden, unlockedProps: ["igloo", "campfire", "lantern"], fishCount: 50, level: 8, timeOverride: .night)
         .ignoresSafeArea()
 }
 
 #Preview("Night — Stormy") {
-    AntarcticEnvironment(mood: .stormy, unlockedProps: [], timeOverride: .night)
+    AntarcticEnvironment(mood: .stormy, unlockedProps: [], fishCount: 5, level: 1, timeOverride: .night)
         .ignoresSafeArea()
 }

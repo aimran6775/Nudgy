@@ -2,15 +2,14 @@
 //  NudgesView.swift
 //  Nudge
 //
-//  The "Nudges" tab — where nudges created from conversations with Nudgy show up.
-//  This is the smart action page: Nudgy can draft messages, emails, take actions.
-//  Items are grouped by what Nudgy can DO for you, not just what's pending.
+//  The "Nudges" tab — time-horizon grouped task view.
 //
-//  Sections:
-//  • Ready to Act — items with drafts/actions Nudgy prepared (draft message, email, call)
-//  • Up Next — active queue items
-//  • Snoozed — waiting
-//  • Done — completed today
+//  ADHD-optimized layout (Phase 1):
+//  • Day-grouped collapsible sections: Today → Tomorrow → This Week → Later → Snoozed → Done
+//  • Daily progress header with animated ring
+//  • "Today" capped at 5 items (working memory limit, Rapport et al., 2008)
+//  • Swipe-to-complete and swipe-to-snooze gestures
+//  • Items with drafts/actions surface at the top of their group
 //
 
 import SwiftUI
@@ -27,11 +26,11 @@ struct NudgesView: View {
 
     @State private var repository: NudgeRepository?
 
-    // Grouped items
-    @State private var readyToActItems: [NudgeItem] = []
-    @State private var activeItems: [NudgeItem] = []
-    @State private var snoozedItems: [NudgeItem] = []
-    @State private var doneItems: [NudgeItem] = []
+    // Time-horizon grouped items
+    @State private var horizonGroups = TimeHorizonGroups()
+    
+    // Section expand/collapse state (persisted per session)
+    @State private var expandedSections: Set<TimeHorizon> = [.today, .tomorrow]
     
     // Draft generation
     @State private var draftGenerationTask: Task<Void, Never>?
@@ -66,7 +65,7 @@ struct NudgesView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                if readyToActItems.isEmpty && activeItems.isEmpty && snoozedItems.isEmpty && doneItems.isEmpty {
+                if horizonGroups.isEmpty {
                     emptyView
                 } else {
                     listContent
@@ -181,6 +180,13 @@ struct NudgesView: View {
         ScrollView {
             LazyVStack(spacing: DesignTokens.spacingLG) {
                 
+                // Daily progress header
+                DailyProgressHeader(
+                    completedToday: horizonGroups.doneToday.count,
+                    totalToday: horizonGroups.today.count + horizonGroups.doneToday.count,
+                    streak: RewardService.shared.currentStreak
+                )
+                
                 // Live Activity opt-in prompt
                 if showLiveActivityPrompt && !settings.liveActivityEnabled {
                     liveActivityPromptBanner
@@ -190,10 +196,11 @@ struct NudgesView: View {
                 // AI Insight banner — contextual advice from Nudgy
                 if let insight = aiInsight, !insight.isEmpty {
                     HStack(spacing: DesignTokens.spacingSM) {
-                        Image(systemName: "bird.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(DesignTokens.accentActive)
-                            .symbolRenderingMode(.hierarchical)
+                        Image("NudgyMascot")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 20, height: 20)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
                         
                         Text(insight)
                             .font(AppTheme.footnote)
@@ -224,27 +231,6 @@ struct NudgesView: View {
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-
-                // ★ Ready to Act — Nudgy has prepared something for you
-                if !readyToActItems.isEmpty {
-                    nudgesSection(
-                        title: String(localized: "Ready to Act"),
-                        subtitle: String(localized: "Nudgy prepared these for you"),
-                        icon: "bolt.fill",
-                        count: readyToActItems.count,
-                        color: DesignTokens.accentActive
-                    ) {
-                        ForEach(readyToActItems, id: \.id) { item in
-                            ActionableNudgeRow(
-                                item: item,
-                                onTap: { editingItem = item },
-                                onAction: { performAction(item) },
-                                onDone: { markDoneWithUndo(item) },
-                                onViewDraft: { showDraftFor = item }
-                            )
-                        }
-                    }
-                }
                 
                 // Drafting indicator
                 if isDraftingCount > 0 {
@@ -269,63 +255,11 @@ struct NudgesView: View {
                     .animation(.easeOut(duration: 0.3), value: isDraftingCount)
                 }
 
-                // Up Next
-                if !activeItems.isEmpty {
-                    nudgesSection(
-                        title: String(localized: "Up Next"),
-                        icon: "sparkle",
-                        count: activeItems.count,
-                        color: DesignTokens.accentActive.opacity(0.7)
-                    ) {
-                        ForEach(activeItems, id: \.id) { item in
-                            InboxItemRow(
-                                item: item,
-                                onTap: { editingItem = item },
-                                onDone: { markDoneWithUndo(item) },
-                                onSnooze: { showSnoozeFor = item },
-                                onBreakDown: { showBreakdownFor = item }
-                            )
-                        }
-                    }
-                }
-
-                // Snoozed
-                if !snoozedItems.isEmpty {
-                    nudgesSection(
-                        title: String(localized: "Snoozed"),
-                        icon: "clock.fill",
-                        count: snoozedItems.count,
-                        color: DesignTokens.textSecondary
-                    ) {
-                        ForEach(snoozedItems, id: \.id) { item in
-                            InboxItemRow(
-                                item: item,
-                                onTap: { editingItem = item },
-                                onDone: { markDoneWithUndo(item) },
-                                onSnooze: nil,
-                                onBreakDown: nil
-                            )
-                        }
-                    }
-                }
-
-                // Done Today
-                if !doneItems.isEmpty {
-                    nudgesSection(
-                        title: String(localized: "Done Today"),
-                        icon: "checkmark.circle.fill",
-                        count: doneItems.count,
-                        color: DesignTokens.accentComplete
-                    ) {
-                        ForEach(doneItems, id: \.id) { item in
-                            InboxItemRow(
-                                item: item,
-                                onTap: { editingItem = item },
-                                onDone: nil,
-                                onSnooze: nil,
-                                onBreakDown: nil
-                            )
-                        }
+                // Time-horizon sections
+                ForEach(TimeHorizon.allCases) { horizon in
+                    let items = horizonGroups.items(for: horizon)
+                    if !items.isEmpty {
+                        horizonSection(for: horizon, items: items)
                     }
                 }
             }
@@ -336,52 +270,89 @@ struct NudgesView: View {
         .refreshable { refreshData() }
     }
 
-    // MARK: - Section Builder
-
-    private func nudgesSection<Content: View>(
-        title: String,
-        subtitle: String? = nil,
-        icon: String,
-        count: Int,
-        color: Color,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.spacingSM) {
-            // Section header
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: DesignTokens.spacingSM) {
-                    Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(color)
-
-                    Text(title)
-                        .font(AppTheme.caption.weight(.semibold))
-                        .foregroundStyle(DesignTokens.textSecondary)
-                        .textCase(.uppercase)
-
-                    Text("\(count)")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(color)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule()
-                                .fill(color.opacity(0.12))
-                        )
-
-                    Spacer()
+    // MARK: - Horizon Section Builder
+    
+    /// Builds a collapsible section for a given time horizon.
+    /// Items with actions/drafts get the richer ActionableNudgeRow, others get InboxItemRow.
+    private func horizonSection(for horizon: TimeHorizon, items: [NudgeItem]) -> some View {
+        CollapsibleNudgeSection(
+            horizon: horizon,
+            count: items.count,
+            accentColor: horizon.accentColor,
+            isExpanded: Binding(
+                get: { expandedSections.contains(horizon) },
+                set: { newValue in
+                    if newValue {
+                        expandedSections.insert(horizon)
+                    } else {
+                        expandedSections.remove(horizon)
+                    }
                 }
-
-                if let subtitle {
-                    Text(subtitle)
-                        .font(AppTheme.footnote)
-                        .foregroundStyle(DesignTokens.textTertiary)
-                        .padding(.leading, DesignTokens.spacingXS)
-                }
+            )
+        ) {
+            ForEach(items, id: \.id) { item in
+                itemRow(for: item, in: horizon)
             }
-            .padding(.horizontal, DesignTokens.spacingXS)
-
-            content()
+        }
+    }
+    
+    /// Picks the right row component for an item based on whether it has actions/drafts.
+    /// Wraps each row in SwipeableRow for gesture-based actions.
+    @ViewBuilder
+    private func itemRow(for item: NudgeItem, in horizon: TimeHorizon) -> some View {
+        if horizon == .doneToday {
+            // Done items — no swipe actions
+            InboxItemRow(
+                item: item,
+                onTap: { editingItem = item },
+                onDone: nil,
+                onSnooze: nil,
+                onBreakDown: nil
+            )
+        } else if (item.hasAction || item.hasDraft) {
+            // Actionable items — richer row with swipe
+            SwipeableRow(
+                content: {
+                    ActionableNudgeRow(
+                        item: item,
+                        onTap: { editingItem = item },
+                        onAction: { performAction(item) },
+                        onDone: { markDoneWithUndo(item) },
+                        onViewDraft: { showDraftFor = item }
+                    )
+                },
+                onSwipeLeading: { markDoneWithUndo(item) },
+                onSwipeTrailing: horizon != .snoozed ? { showSnoozeFor = item } : nil
+            )
+        } else if horizon == .snoozed {
+            // Snoozed items — swipe to done only
+            SwipeableRow(
+                content: {
+                    InboxItemRow(
+                        item: item,
+                        onTap: { editingItem = item },
+                        onDone: { markDoneWithUndo(item) },
+                        onSnooze: nil,
+                        onBreakDown: nil
+                    )
+                },
+                onSwipeLeading: { markDoneWithUndo(item) }
+            )
+        } else {
+            // Regular active items — full swipe (done + snooze)
+            SwipeableRow(
+                content: {
+                    InboxItemRow(
+                        item: item,
+                        onTap: { editingItem = item },
+                        onDone: { markDoneWithUndo(item) },
+                        onSnooze: { showSnoozeFor = item },
+                        onBreakDown: { showBreakdownFor = item }
+                    )
+                },
+                onSwipeLeading: { markDoneWithUndo(item) },
+                onSwipeTrailing: { showSnoozeFor = item }
+            )
         }
     }
 
@@ -531,11 +502,12 @@ struct NudgesView: View {
         guard let repository else { return }
         let grouped = repository.fetchAllGrouped()
 
-        // Split active items: those with actions/drafts go to "Ready to Act"
-        readyToActItems = grouped.active.filter { $0.hasAction || $0.hasDraft }
-        activeItems = grouped.active.filter { !$0.hasAction && !$0.hasDraft }
-        snoozedItems = grouped.snoozed
-        doneItems = grouped.doneToday
+        // Use time-horizon grouper for ADHD-optimized layout
+        horizonGroups = TimeHorizonGrouper.group(
+            active: grouped.active,
+            snoozed: grouped.snoozed,
+            doneToday: grouped.doneToday
+        )
     }
     
     // MARK: - Draft Generation
@@ -545,7 +517,7 @@ struct NudgesView: View {
         draftGenerationTask?.cancel()
         draftGenerationTask = Task {
             // Find actionable items (text/email) without drafts
-            let allActive = readyToActItems + activeItems
+            let allActive = horizonGroups.allActive
             let needsDraft = allActive.filter { item in
                 guard let actionType = item.actionType,
                       actionType == .text || actionType == .email else { return false }
@@ -565,7 +537,7 @@ struct NudgesView: View {
                     senderName: settings.userName.isEmpty ? nil : settings.userName
                 )
                 isDraftingCount -= 1
-                // Refresh to move newly-drafted items to "Ready to Act"
+                // Refresh to surface newly-drafted items at the top of their group
                 refreshData()
             }
             
@@ -576,7 +548,8 @@ struct NudgesView: View {
     // MARK: - AI Insight
     
     private func generateAIInsight() {
-        let totalActive = readyToActItems.count + activeItems.count
+        let allActive = horizonGroups.allActive
+        let totalActive = allActive.count
         guard totalActive > 0, AIService.shared.isAvailable else {
             aiInsight = nil
             return
@@ -585,8 +558,6 @@ struct NudgesView: View {
         isGeneratingInsight = true
         
         Task {
-            // Build context summary for AI
-            let allActive = readyToActItems + activeItems
             let taskSummary = allActive.prefix(5).map { item in
                 let emoji = item.emoji ?? "📌"
                 let age = Calendar.current.dateComponents([.day], from: item.createdAt, to: Date()).day ?? 0
@@ -595,7 +566,7 @@ struct NudgesView: View {
             
             let overdueCount = allActive.filter { $0.accentStatus == .overdue }.count
             let staleCount = allActive.filter { $0.accentStatus == .stale }.count
-            let draftedCount = readyToActItems.filter { $0.hasDraft }.count
+            let draftedCount = allActive.filter { $0.hasDraft }.count
             
             let line = await NudgyDialogueEngine.shared.smartIdleChatter(
                 currentTask: "User has \(totalActive) active tasks (\(overdueCount) overdue, \(staleCount) stale, \(draftedCount) with drafts ready):\n\(taskSummary)",
@@ -616,8 +587,8 @@ struct NudgesView: View {
         nudgesLog.info("syncLiveActivity called — liveActivityEnabled: \(self.settings.liveActivityEnabled)")
         guard settings.liveActivityEnabled else { return }
         
-        let allActive = readyToActItems + activeItems
-        nudgesLog.info("syncLiveActivity — allActive count: \(allActive.count), readyToAct: \(self.readyToActItems.count), active: \(self.activeItems.count)")
+        let allActive = horizonGroups.allActive
+        nudgesLog.info("syncLiveActivity — allActive count: \(allActive.count)")
         guard let topItem = allActive.first else {
             Task { await LiveActivityManager.shared.endIfEmpty() }
             return
@@ -657,7 +628,7 @@ struct NudgesView: View {
     
     /// Prompt user to enable Live Activity if they haven't been asked and have active tasks.
     private func promptLiveActivityIfNeeded() {
-        let totalActive = readyToActItems.count + activeItems.count
+        let totalActive = horizonGroups.activeCount
         guard totalActive >= 1,
               !settings.liveActivityEnabled,
               !settings.liveActivityPromptShown else {

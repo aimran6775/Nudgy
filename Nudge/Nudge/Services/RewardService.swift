@@ -75,6 +75,9 @@ final class RewardService {
     /// Current level.
     private(set) var level: Int = 1
     
+    /// Progress toward next level (0.0–1.0).
+    private(set) var levelProgress: Double = 0
+    
     /// Tasks completed today.
     private(set) var tasksCompletedToday: Int = 0
     
@@ -285,6 +288,7 @@ final class RewardService {
         unlockedProps = wardrobe.unlockedProps
         currentStreak = wardrobe.currentStreak
         level = wardrobe.level
+        levelProgress = wardrobe.levelProgress
         tasksCompletedToday = wardrobe.tasksCompletedToday
         environmentMood = wardrobe.environmentMood
     }
