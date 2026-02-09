@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 400 460"
+     width="400" height="460"
+     style="background: transparent">
+
+  <defs>
+    <!-- Body gradient: dark with edge highlights -->
+    <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#343450"/>
+      <stop offset="15%" stop-color="#1A1A2E"/>
+      <stop offset="85%" stop-color="#1A1A2E"/>
+      <stop offset="100%" stop-color="#343450"/>
+    </linearGradient>
+
+    <!-- Belly gradient: white top, slightly shadowed bottom -->
+    <linearGradient id="bellyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F5F5F7"/>
+      <stop offset="70%" stop-color="#F5F5F7"/>
+      <stop offset="100%" stop-color="#E8E8EC"/>
+    </linearGradient>
+
+    <!-- Head gradient: radial highlight -->
+    <radialGradient id="headGrad" cx="0.35" cy="0.3" r="0.7">
+      <stop offset="0%" stop-color="#2A2A42"/>
+      <stop offset="50%" stop-color="#1A1A2E"/>
+      <stop offset="100%" stop-color="#1A1A2E"/>
+    </radialGradient>
+
+    <!-- Wing gradient -->
+    <linearGradient id="wingGradL" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1A1A2E"/>
+      <stop offset="50%" stop-color="#1A1A2E"/>
+      <stop offset="100%" stop-color="#2A2A42"/>
+    </linearGradient>
+    <linearGradient id="wingGradR" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1A1A2E"/>
+      <stop offset="50%" stop-color="#1A1A2E"/>
+      <stop offset="100%" stop-color="#2A2A42"/>
+    </linearGradient>
+
+    <!-- Scarf gradient -->
+    <linearGradient id="scarfGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#007AFF"/>
+      <stop offset="50%" stop-color="#007AFF"/>
+      <stop offset="100%" stop-color="#0055CC"/>
+    </linearGradient>
+
+    <!-- Beak gradient -->
+    <linearGradient id="beakGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3399FF"/>
+      <stop offset="100%" stop-color="#007AFF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Layer 0: Feet -->
+  <g id="feet">
+    <g id="left_foot">
+      <path d="M 172.80 401.50 C 185.01 401.50, 194.90 405.31, 194.90 410.00 C 194.90 414.69, 185.01 418.50, 172.80 418.50 C 160.59 418.50, 150.70 414.69, 150.70 410.00 C 150.70 405.31, 160.59 401.50, 172.80 401.50 Z" fill="#007AFF" opacity="0.7"/>
+    </g>
+    <g id="right_foot">
+      <path d="M 227.20 401.50 C 239.41 401.50, 249.30 405.31, 249.30 410.00 C 249.30 414.69, 239.41 418.50, 227.20 418.50 C 214.99 418.50, 205.10 414.69, 205.10 410.00 C 205.10 405.31, 214.99 401.50, 227.20 401.50 Z" fill="#007AFF" opacity="0.7"/>
+    </g>
+  </g>
+
+  <!-- Layer 1: Body -->
+  <g id="body">
+    <path d="M 200.00 128.48 C 289.76 128.48, 364.56 242.72, 342.12 348.80 C 327.16 405.92, 259.84 430.40, 200.00 422.24 C 140.16 430.40, 72.84 405.92, 57.88 348.80 C 35.44 242.72, 110.24 128.48, 200.00 128.48 Z" fill="url(#bodyGrad)"/>
+  </g>
+
+  <!-- Layer 2: Belly -->
+  <g id="belly">
+    <path d="M 200.00 158.40 C 256.33 158.40, 302.00 216.24, 302.00 287.60 C 302.00 358.96, 256.33 416.80, 200.00 416.80 C 143.67 416.80, 98.00 358.96, 98.00 287.60 C 98.00 216.24, 143.67 158.40, 200.00 158.40 Z" fill="url(#bellyGrad)"/>
+  </g>
+
+  <!-- Layer 3: Wings -->
+  <g id="left_wing">
+    <path d="M 64.52 180.75 C 42.12 202.24, 36.73 234.66, 64.17 258.29 C 80.22 265.60, 84.64 229.57, 64.52 180.75 Z" fill="url(#wingGradL)"/>
+  </g>
+  <g id="right_wing">
+    <path d="M 335.48 180.75 C 357.88 202.24, 363.27 234.66, 335.83 258.29 C 319.78 265.60, 315.36 229.57, 335.48 180.75 Z" fill="url(#wingGradR)"/>
+  </g>
+
+  <!-- Layer 4: Scarf -->
+  <g id="scarf">
+    <path d="M 98.00 206.00 C 149.00 196.48, 251.00 196.48, 302.00 206.00 C 307.10 223.85, 251.00 247.65, 230.60 241.70 C 266.30 265.50, 286.70 283.35, 256.10 295.25 C 235.70 277.40, 245.90 259.55, 215.30 241.70 C 169.40 251.22, 118.40 235.75, 98.00 206.00 Z" fill="url(#scarfGrad)" stroke="#3399FF" stroke-width="0.8" stroke-opacity="0.5"/>
+  </g>
+
+  <!-- Layer 5: Head -->
+  <g id="head" transform="rotate(3, 200.00, 165.20)">
+    <path d="M 200.00 70.00 C 256.78 70.00, 302.82 112.62, 302.82 165.20 C 302.82 217.78, 256.78 260.40, 200.00 260.40 C 143.22 260.40, 97.18 217.78, 97.18 165.20 C 97.18 112.62, 143.22 70.00, 200.00 70.00 Z" fill="url(#headGrad)"/>
+  </g>
+
+  <!-- Layer 6: Face Patch -->
+  <g id="face_patch" transform="rotate(3, 200.00, 165.20)">
+    <path d="M 200.00 121.00 C 237.56 121.00, 268.00 146.88, 268.00 178.80 C 268.00 210.72, 237.56 236.60, 200.00 236.60 C 162.44 236.60, 132.00 210.72, 132.00 178.80 C 132.00 146.88, 162.44 121.00, 200.00 121.00 Z" fill="#FFFFFF"/>
+  </g>
+
+  <!-- Layer 7-8: Eyes -->
+  <g id="eyes" transform="rotate(3, 200.00, 165.20)">
+  <g id="left_eye">
+    <circle cx="167.70" cy="168.60" r="16.42" fill="#FFFFFF"/>
+    <circle cx="167.70" cy="168.60" r="14.28" fill="#0A0A0E"/>
+    <circle cx="171.70" cy="164.32" r="5.43" fill="#FFFFFF" opacity="0.92"/>
+    <circle cx="164.56" cy="172.60" r="2.57" fill="#FFFFFF" opacity="0.55"/>
+  </g>
+  <g id="right_eye">
+    <circle cx="232.30" cy="168.60" r="17.24" fill="#FFFFFF"/>
+    <circle cx="232.30" cy="168.60" r="14.99" fill="#0A0A0E"/>
+    <circle cx="236.50" cy="164.10" r="5.70" fill="#FFFFFF" opacity="0.92"/>
+    <circle cx="229.00" cy="172.80" r="2.70" fill="#FFFFFF" opacity="0.55"/>
+  </g>
+  </g>
+
+  <!-- Layer 9: Beak -->
+  <g id="beak" transform="rotate(3, 200.00, 165.20)">
+    <path d="M 200.00 209.40 C 195.72 201.07, 185.72 195.12, 188.58 191.55 C 194.29 186.79, 205.71 186.79, 211.42 191.55 C 214.28 195.12, 204.28 201.07, 200.00 209.40 Z" fill="url(#beakGrad)"/>
+  </g>
+
+  <!-- Layer 10-11: Blush -->
+  <g id="blush" transform="rotate(3, 200.00, 165.20)">
+  <g id="blush_left">
+    <circle cx="150.70" cy="178.80" r="11.90" fill="#FF6B8A" opacity="0.15"/>
+  </g>
+  <g id="blush_right">
+    <circle cx="249.30" cy="178.80" r="11.90" fill="#FF6B8A" opacity="0.15"/>
+  </g>
+  </g>
+
+</svg>

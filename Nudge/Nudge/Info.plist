@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.nudge.app.liveActivityRefresh</string>
+	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Nudge uses the microphone so you can brain dump your thoughts by speaking instead of typing.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Nudge uses on-device speech recognition to turn your spoken words into task cards.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Nudge can look up contacts so you can quickly call or message someone from a task card.</string>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>com.nudge.app.viewTask</string>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+	<key>OPENAI_API_KEY</key>
+	<string>$(OPENAI_API_KEY)</string>
+</dict>
+</plist>

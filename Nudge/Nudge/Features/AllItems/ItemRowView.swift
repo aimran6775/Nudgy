@@ -1,0 +1,129 @@
+//
+//  ItemRowView.swift
+//  Nudge
+//
+//  Row component for the All Items list. Dark translucent card with accent dot.
+//
+
+import SwiftUI
+
+struct ItemRowView: View {
+    
+    let item: NudgeItem
+    var onTap: () -> Void = {}
+    
+    private var accentColor: Color {
+        AccentColorSystem.shared.color(for: item.accentStatus)
+    }
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: DesignTokens.spacingMD) {
+                // Accent dot
+                Circle()
+                    .fill(accentColor)
+                    .frame(width: 8, height: 8)
+                
+                // Emoji
+                if let emoji = item.emoji {
+                    Text(emoji)
+                        .font(AppTheme.emoji(size: 18))
+                }
+                
+                // Content
+                VStack(alignment: .leading, spacing: DesignTokens.spacingXS) {
+                    Text(item.content)
+                        .font(AppTheme.body)
+                        .foregroundStyle(
+                            item.status == .done
+                                ? DesignTokens.textTertiary
+                                : DesignTokens.textPrimary
+                        )
+                        .strikethrough(item.status == .done)
+                        .lineLimit(2)
+                    
+                    HStack(spacing: DesignTokens.spacingSM) {
+                        // Source icon
+                        Image(systemName: item.sourceType.icon)
+                            .font(.system(size: 10))
+                        
+                        // Timestamp
+                        if item.status == .snoozed, let until = item.snoozedUntil {
+                            Text(until.friendlySnoozeDescription)
+                        } else if item.status == .done, let completedAt = item.completedAt {
+                            Text(completedAt.relativeDescription)
+                        } else {
+                            Text(item.createdAt.relativeDescription)
+                        }
+                        
+                        // Action indicator
+                        if let actionType = item.actionType {
+                            Image(systemName: actionType.icon)
+                                .font(.system(size: 10))
+                                .foregroundStyle(DesignTokens.accentActive)
+                        }
+                        
+                        // Stale badge
+                        if item.isStale {
+                            Text(String(localized: "\(item.ageInDays)d"))
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(DesignTokens.accentStale)
+                        }
+                    }
+                    .font(AppTheme.footnote)
+                    .foregroundStyle(DesignTokens.textSecondary)
+                }
+                
+                Spacer()
+                
+                // Chevron
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DesignTokens.textTertiary)
+            }
+            .padding(DesignTokens.spacingMD)
+            .background(
+                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
+                    .fill(DesignTokens.cardSurface.opacity(DesignTokens.cardOpacity))
+            )
+        }
+        .buttonStyle(.plain)
+        .nudgeAccessibility(
+            label: itemAccessibilityLabel,
+            hint: String(localized: "Double tap to edit"),
+            traits: .isButton
+        )
+    }
+    
+    private var itemAccessibilityLabel: String {
+        var parts = [item.content]
+        if item.isStale { parts.append(String(localized: "stale")) }
+        if item.status == .snoozed, let until = item.snoozedUntil {
+            parts.append(String(localized: "snoozed until \(until.friendlySnoozeDescription)"))
+        }
+        if item.status == .done { parts.append(String(localized: "completed")) }
+        return parts.joined(separator: ", ")
+    }
+}
+
+// MARK: - Preview
+
+#Preview {
+    ZStack {
+        Color.black.ignoresSafeArea()
+        
+        VStack(spacing: 8) {
+            ItemRowView(item: NudgeItem(content: "Call the dentist", emoji: "📞", actionType: .call, contactName: "Dr. Chen"))
+            ItemRowView(item: {
+                let item = NudgeItem(content: "Buy dog food", emoji: "🐶")
+                return item
+            }())
+            ItemRowView(item: {
+                let item = NudgeItem(content: "Reply to Sarah", emoji: "💬", actionType: .text)
+                item.markDone()
+                return item
+            }())
+        }
+        .padding()
+    }
+}
