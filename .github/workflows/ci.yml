@@ -1,0 +1,131 @@
+name: Nudge CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Create Secrets.xcconfig
+        run: |
+          echo "// CI placeholder — real key injected at deploy time" > Nudge/Secrets.xcconfig
+          echo "OPENAI_API_KEY = sk-placeholder" >> Nudge/Secrets.xcconfig
+
+      - name: Resolve Swift packages
+        run: |
+          cd Nudge
+          xcodebuild -resolvePackageDependencies \
+            -scheme Nudge \
+            -clonedSourcePackagesDirPath ../SPM
+
+      - name: Build for Simulator
+        run: |
+          cd Nudge
+          xcodebuild build \
+            -scheme Nudge \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -clonedSourcePackagesDirPath ../SPM \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions || true
+
+      - name: Run Unit Tests
+        run: |
+          cd Nudge
+          xcodebuild test \
+            -scheme Nudge \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -clonedSourcePackagesDirPath ../SPM \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath ../TestResults.xcresult \
+            | xcbeautify --renderer github-actions || true
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: TestResults.xcresult
+          retention-days: 7
+
+  lint:
+    name: SwiftLint
+    runs-on: macos-15
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SwiftLint
+        run: brew install swiftlint || true
+
+      - name: Lint
+        run: |
+          cd Nudge/Nudge
+          swiftlint lint --reporter github-actions-logging --quiet || true
+
+  archive:
+    name: Archive (Release)
+    needs: build
+    runs-on: macos-15
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+
+      - name: Create Secrets.xcconfig
+        run: |
+          echo "OPENAI_API_KEY = ${{ secrets.OPENAI_API_KEY }}" > Nudge/Secrets.xcconfig
+
+      - name: Resolve Swift packages
+        run: |
+          cd Nudge
+          xcodebuild -resolvePackageDependencies \
+            -scheme Nudge \
+            -clonedSourcePackagesDirPath ../SPM
+
+      - name: Archive
+        run: |
+          cd Nudge
+          xcodebuild archive \
+            -scheme Nudge \
+            -archivePath ../Nudge.xcarchive \
+            -destination 'generic/platform=iOS' \
+            -clonedSourcePackagesDirPath ../SPM \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions || true
+
+      - name: Upload Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nudge.xcarchive
+          path: Nudge.xcarchive
+          retention-days: 14
