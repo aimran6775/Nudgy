@@ -60,7 +60,7 @@ nonisolated enum NudgyConfig {
         static var extractionModel = "gpt-4o-mini"
         
         /// Max tokens per response.
-        static var maxTokens = 300
+        static var maxTokens = 500
         
         /// Temperature for conversation (higher = more creative).
         static var conversationTemperature: Double = 0.85

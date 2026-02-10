@@ -50,7 +50,105 @@ final class NudgyLLMService {
     /// Last error (for debugging).
     private(set) var lastError: String?
     
+    // MARK: - Circuit Breaker
+    
+    /// Consecutive failure count.
+    private var consecutiveFailures = 0
+    
+    /// When the circuit was opened (failures exceeded threshold).
+    private var circuitOpenedAt: Date?
+    
+    /// Number of consecutive failures before tripping the circuit.
+    private let circuitBreakerThreshold = 3
+    
+    /// How long to wait before retrying after circuit trips (seconds).
+    private let circuitCooldown: TimeInterval = 120
+    
+    /// Whether the circuit breaker is open (skip OpenAI).
+    var isCircuitOpen: Bool {
+        guard let openedAt = circuitOpenedAt else { return false }
+        if Date.now.timeIntervalSince(openedAt) > circuitCooldown {
+            // Cooldown expired — half-open, allow one attempt
+            return false
+        }
+        return true
+    }
+    
+    // MARK: - Latency Tracking
+    
+    /// Rolling average latency of recent requests (seconds).
+    private(set) var averageLatency: TimeInterval = 0
+    private var recentLatencies: [TimeInterval] = []
+    private let maxLatencySamples = 20
+    
+    // MARK: - URLSession (configured with proper timeouts)
+    
+    private let apiSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15   // 15s for first byte
+        config.timeoutIntervalForResource = 30  // 30s total
+        config.waitsForConnectivity = false     // Fail fast if offline
+        return URLSession(configuration: config)
+    }()
+    
+    private let streamSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15   // 15s for first SSE chunk
+        config.timeoutIntervalForResource = 60  // 60s total for stream
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+    
     private init() {}
+    
+    // MARK: - Retry Wrapper
+    
+    /// Execute an async operation with retry and exponential backoff.
+    private func withRetry<T>(
+        maxAttempts: Int = 2,
+        initialDelay: TimeInterval = 1.0,
+        operation: () async throws -> T
+    ) async throws -> T {
+        var lastError: Error?
+        for attempt in 1...maxAttempts {
+            do {
+                let result = try await operation()
+                // Success — reset circuit breaker
+                consecutiveFailures = 0
+                circuitOpenedAt = nil
+                return result
+            } catch {
+                lastError = error
+                consecutiveFailures += 1
+                
+                // Trip circuit breaker if too many failures
+                if consecutiveFailures >= circuitBreakerThreshold {
+                    circuitOpenedAt = .now
+                    #if DEBUG
+                    print("🔴 Circuit breaker OPEN — \(consecutiveFailures) consecutive failures. Cooling down \(circuitCooldown)s.")
+                    #endif
+                }
+                
+                if attempt < maxAttempts {
+                    let delay = initialDelay * pow(2, Double(attempt - 1))
+                    #if DEBUG
+                    print("⚠️ LLM attempt \(attempt) failed: \(error.localizedDescription). Retrying in \(delay)s...")
+                    #endif
+                    try await Task.sleep(for: .seconds(delay))
+                }
+            }
+        }
+        throw lastError ?? NudgyLLMError.invalidResponse
+    }
+    
+    /// Record a latency sample.
+    private func recordLatency(_ duration: TimeInterval) {
+        recentLatencies.append(duration)
+        if recentLatencies.count > maxLatencySamples {
+            recentLatencies.removeFirst()
+        }
+        averageLatency = recentLatencies.reduce(0, +) / Double(recentLatencies.count)
+    }
     
     // MARK: - Chat Completion
     
@@ -64,46 +162,62 @@ final class NudgyLLMService {
         temperature: Double? = nil,
         maxTokens: Int? = nil
     ) async throws -> LLMResponse {
+        // Circuit breaker check
+        if isCircuitOpen {
+            throw NudgyLLMError.circuitOpen
+        }
+        
         isGenerating = true
         defer { isGenerating = false }
         
-        let url = URL(string: "\(NudgyConfig.OpenAI.baseURL)/chat/completions")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(NudgyConfig.OpenAI.apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 30
+        let startTime = CFAbsoluteTimeGetCurrent()
         
-        var body: [String: Any] = [
-            "model": model ?? NudgyConfig.OpenAI.chatModel,
-            "messages": messages,
-            "temperature": temperature ?? NudgyConfig.OpenAI.conversationTemperature,
-            "max_tokens": maxTokens ?? NudgyConfig.OpenAI.maxTokens,
-        ]
-        
-        if let tools = tools, !tools.isEmpty {
-            body["tools"] = tools
-            body["tool_choice"] = toolChoice ?? "auto"
-            // Allow the model to emit multiple tool calls in parallel
-            body["parallel_tool_calls"] = true
+        return try await withRetry(maxAttempts: 2, initialDelay: 1.0) {
+            let url = URL(string: "\(NudgyConfig.OpenAI.baseURL)/chat/completions")!
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(NudgyConfig.OpenAI.apiKey)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            var body: [String: Any] = [
+                "model": model ?? NudgyConfig.OpenAI.chatModel,
+                "messages": messages,
+                "temperature": temperature ?? NudgyConfig.OpenAI.conversationTemperature,
+                "max_tokens": maxTokens ?? NudgyConfig.OpenAI.maxTokens,
+            ]
+            
+            if let tools = tools, !tools.isEmpty {
+                body["tools"] = tools
+                body["tool_choice"] = toolChoice ?? "auto"
+                body["parallel_tool_calls"] = true
+            }
+            
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            
+            let (data, response) = try await self.apiSession.data(for: request)
+            
+            let latency = CFAbsoluteTimeGetCurrent() - startTime
+            self.recordLatency(latency)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw NudgyLLMError.invalidResponse
+            }
+            
+            guard httpResponse.statusCode == 200 else {
+                let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+                self.lastError = "HTTP \(httpResponse.statusCode): \(errorBody)"
+                print("🔴 LLM API error: HTTP \(httpResponse.statusCode) — \(errorBody.prefix(200))")
+                
+                // Don't retry rate limits or auth errors
+                if httpResponse.statusCode == 429 || httpResponse.statusCode == 401 {
+                    self.consecutiveFailures += self.circuitBreakerThreshold
+                    self.circuitOpenedAt = .now
+                }
+                throw NudgyLLMError.apiError(statusCode: httpResponse.statusCode, message: errorBody)
+            }
+            
+            return try self.parseResponse(data)
         }
-        
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw NudgyLLMError.invalidResponse
-        }
-        
-        guard httpResponse.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            lastError = "HTTP \(httpResponse.statusCode): \(errorBody)"
-            print("🔴 LLM API error: HTTP \(httpResponse.statusCode) — \(errorBody.prefix(200))")
-            throw NudgyLLMError.apiError(statusCode: httpResponse.statusCode, message: errorBody)
-        }
-        
-        return try parseResponse(data)
     }
     
     // MARK: - Streaming Chat Completion
@@ -118,6 +232,10 @@ final class NudgyLLMService {
         maxTokens: Int? = nil,
         onPartial: @escaping @MainActor (String) -> Void
     ) async throws -> LLMResponse {
+        if isCircuitOpen {
+            throw NudgyLLMError.circuitOpen
+        }
+        
         isGenerating = true
         defer { isGenerating = false }
         
@@ -126,7 +244,6 @@ final class NudgyLLMService {
         request.httpMethod = "POST"
         request.setValue("Bearer \(NudgyConfig.OpenAI.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 60
         
         var body: [String: Any] = [
             "model": model ?? NudgyConfig.OpenAI.chatModel,
@@ -143,11 +260,19 @@ final class NudgyLLMService {
         
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let (bytes, response) = try await streamSession.bytes(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            consecutiveFailures += 1
+            if consecutiveFailures >= circuitBreakerThreshold {
+                circuitOpenedAt = .now
+            }
             throw NudgyLLMError.apiError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0, message: "Stream failed")
         }
+        
+        // Stream started successfully — reset failures
+        consecutiveFailures = 0
+        circuitOpenedAt = nil
         
         var fullContent = ""
         var toolCallIds: [String: String] = [:]  // index → id
@@ -320,6 +445,7 @@ enum NudgyLLMError: LocalizedError {
     case apiError(statusCode: Int, message: String)
     case parseError
     case notConfigured
+    case circuitOpen
     
     nonisolated var errorDescription: String? {
         switch self {
@@ -331,6 +457,8 @@ enum NudgyLLMError: LocalizedError {
             return "Failed to parse AI response"
         case .notConfigured:
             return "AI service not configured"
+        case .circuitOpen:
+            return "AI service temporarily unavailable (cooling down)"
         }
     }
 }

@@ -78,6 +78,68 @@ final class AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: scopedKey("savedItemsCount")) }
     }
     
+    // MARK: - Smart Resurfacing
+    
+    /// ID of the last task the user was focused on.
+    var lastFocusedItemID: String? {
+        get { UserDefaults.standard.string(forKey: scopedKey("lastFocusedItemID")) }
+        set { UserDefaults.standard.set(newValue, forKey: scopedKey("lastFocusedItemID")) }
+    }
+    
+    /// When the user last focused on a task.
+    var lastFocusedAt: Date? {
+        get { UserDefaults.standard.object(forKey: scopedKey("lastFocusedAt")) as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: scopedKey("lastFocusedAt")) }
+    }
+    
+    /// Content of the last focused task (cached for quick greeting).
+    var lastFocusedContent: String? {
+        get { UserDefaults.standard.string(forKey: scopedKey("lastFocusedContent")) }
+        set { UserDefaults.standard.set(newValue, forKey: scopedKey("lastFocusedContent")) }
+    }
+    
+    /// Track when the user was last active (for welcome-back context).
+    var lastActiveDate: Date? {
+        get { UserDefaults.standard.object(forKey: scopedKey("lastActiveDate")) as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: scopedKey("lastActiveDate")) }
+    }
+    
+    /// Tasks completed today.
+    var todayCompletedCount: Int {
+        get { UserDefaults.standard.integer(forKey: scopedKey("todayCompletedCount")) }
+        set { UserDefaults.standard.set(newValue, forKey: scopedKey("todayCompletedCount")) }
+    }
+    
+    /// Date of the todayCompletedCount reset.
+    var todayCompletedResetDate: Date {
+        get {
+            (UserDefaults.standard.object(forKey: scopedKey("todayCompletedResetDate")) as? Date) ?? .distantPast
+        }
+        set { UserDefaults.standard.set(newValue, forKey: scopedKey("todayCompletedResetDate")) }
+    }
+    
+    /// Record that the user focused on a specific task.
+    func recordFocus(itemID: UUID, content: String) {
+        lastFocusedItemID = itemID.uuidString
+        lastFocusedContent = content
+        lastFocusedAt = .now
+    }
+    
+    /// Record a task completion for daily stats.
+    func recordCompletion() {
+        let calendar = Calendar.current
+        if !calendar.isDateInToday(todayCompletedResetDate) {
+            todayCompletedCount = 0
+            todayCompletedResetDate = .now
+        }
+        todayCompletedCount += 1
+    }
+    
+    /// Update last active timestamp.
+    func recordActivity() {
+        lastActiveDate = .now
+    }
+    
     // MARK: - User Info
     
     var userName: String {

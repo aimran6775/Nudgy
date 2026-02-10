@@ -25,10 +25,32 @@ struct ContentView: View {
     @State private var showBrainDump = false
     @State private var showQuickAdd = false
     @State private var activeItemCount: Int = 0
+    @State private var hasOverdueTasks: Bool = false
+    @State private var allClear: Bool = false
     @State private var repository: NudgeRepository?
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AppSettings.self) private var settings
+    @Environment(PenguinState.self) private var penguinState
+    
+    /// Smart badge: show exact count for 1-3, cap at 3 for 4+ (avoids overwhelm).
+    /// ADHD users respond to manageable numbers, not large counts.
+    private var smartBadge: Int {
+        if activeItemCount == 0 { return 0 }
+        return min(activeItemCount, 3)
+    }
+    
+    /// Dynamic icon for the Nudges tab based on task state.
+    private var nudgesTabIcon: String {
+        if allClear { return "checkmark.circle" }
+        if hasOverdueTasks { return "bell.badge" }
+        return "sparkles"
+    }
+    
+    /// Dynamic icon for Nudgy tab based on penguin expression.
+    private var nudgyTabExpression: PenguinExpression {
+        penguinState.expression
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -43,10 +65,10 @@ struct ContentView: View {
                 }
             }
 
-            Tab(String(localized: "Nudges"), systemImage: "sparkles", value: NudgeTab.nudges) {
+            Tab(String(localized: "Nudges"), systemImage: nudgesTabIcon, value: NudgeTab.nudges) {
                 NudgesView()
             }
-            .badge(activeItemCount > 0 ? activeItemCount : 0)
+            .badge(smartBadge)
 
             Tab(String(localized: "You"), systemImage: "person.fill", value: NudgeTab.you) {
                 YouView()
@@ -102,6 +124,8 @@ struct ContentView: View {
         setupRepository()
         let activeQueue = repository?.fetchActiveQueue() ?? []
         activeItemCount = activeQueue.count
+        hasOverdueTasks = activeQueue.contains { $0.accentStatus == .overdue }
+        allClear = activeQueue.isEmpty
         updateLiveActivity(queue: activeQueue)
     }
     

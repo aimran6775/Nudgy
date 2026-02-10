@@ -432,6 +432,57 @@ final class NudgyEngine {
         dialogue.hyperfocusCheckIn()
     }
     
+    // MARK: - Smart Resurfacing
+    
+    /// Generate a welcome-back message based on last focused task and time away.
+    /// Returns nil if no meaningful context to resurface.
+    func welcomeBack(settings: AppSettings, activeQueue: [NudgeItem]) -> String? {
+        guard let lastContent = settings.lastFocusedContent,
+              let lastFocusedAt = settings.lastFocusedAt else { return nil }
+        
+        let minutesAway = Int(Date.now.timeIntervalSince(lastFocusedAt) / 60)
+        
+        // Less than 2 minutes away — no need for welcome back
+        guard minutesAway >= 2 else { return nil }
+        
+        // Check if the last focused task is still active
+        let lastTaskStillActive: Bool
+        if let lastID = settings.lastFocusedItemID,
+           let uuid = UUID(uuidString: lastID) {
+            lastTaskStillActive = activeQueue.contains { $0.id == uuid && $0.status == .active }
+        } else {
+            lastTaskStillActive = false
+        }
+        
+        if lastTaskStillActive {
+            if minutesAway < 30 {
+                return "Welcome back! You were working on \(lastContent). Ready to finish? 🐧"
+            } else if minutesAway < 120 {
+                return "Oh, hello again! \(lastContent) is still here waiting. Shall we? 🐧"
+            } else {
+                return "You were working on \(lastContent) earlier. Want to pick it back up, or start fresh? 🐧"
+            }
+        }
+        
+        // Task was completed while away (e.g., from notification)
+        return nil
+    }
+    
+    /// Generate an end-of-day summary prompt.
+    func endOfDaySummary(completedToday: Int, remainingCount: Int) -> String? {
+        guard completedToday > 0 || remainingCount > 0 else { return nil }
+        
+        if remainingCount == 0 {
+            return "You got everything done today! \(completedToday) task\(completedToday == 1 ? "" : "s") finished. Rest well 🌙"
+        }
+        
+        if completedToday > 0 {
+            return "You got \(completedToday) of \(completedToday + remainingCount) done today. That counts. \(remainingCount) can wait until tomorrow 💤"
+        }
+        
+        return "Tomorrow’s a new day. \(remainingCount) nudge\(remainingCount == 1 ? "" : "s") ready when you are 🌅"
+    }
+    
     // MARK: - All Clear / Rest
     
     /// Show all-clear state.

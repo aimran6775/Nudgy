@@ -43,10 +43,22 @@ final class SpeechService {
     var silenceAutoSendEnabled = false
     
     /// Duration of continuous silence before triggering auto-send (seconds)
-    private let silenceThreshold: TimeInterval = 1.8
+    private var silenceThreshold: TimeInterval = 1.8
+    
+    /// Base silence threshold (before adaptive adjustment)
+    private let baseSilenceThreshold: TimeInterval = 1.8
     
     /// Audio level below which counts as "silence"
     private let silenceLevelThreshold: Float = 0.005
+    
+    /// Ambient noise level measured before recording (0.0 - 1.0)
+    private(set) var ambientNoiseLevel: Float = 0
+    
+    /// Whether the environment is noisy
+    private(set) var isNoisyEnvironment = false
+    
+    /// Low-confidence words from last transcription
+    private(set) var lowConfidenceSegments: [String] = []
     
     /// Last time the transcript changed (used for silence detection — more reliable than audio levels)
     private var lastTranscriptChangeTime: Date?
@@ -123,6 +135,66 @@ final class SpeechService {
         }
         
         return true
+    }
+    
+    // MARK: - Ambient Noise Detection
+    
+    /// Sample ambient audio for 0.5s before recording to calibrate.
+    /// Returns the measured noise level.
+    func measureAmbientNoise() async -> Float {
+        let audioSession = AVAudioSession.sharedInstance()
+        do {
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+            try audioSession.setActive(true)
+        } catch {
+            speechLog.warning("Ambient noise measurement failed: \(error.localizedDescription)")
+            return 0
+        }
+        
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+        let format = inputNode.outputFormat(forBus: 0)
+        guard format.channelCount > 0, format.sampleRate > 0 else { return 0 }
+        
+        var samples: [Float] = []
+        
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            guard let channelData = buffer.floatChannelData?[0] else { return }
+            let frameLength = Int(buffer.frameLength)
+            var sum: Float = 0
+            for i in 0..<frameLength { sum += abs(channelData[i]) }
+            let avg = sum / Float(max(frameLength, 1))
+            samples.append(min(avg * 10, 1.0))
+        }
+        
+        engine.prepare()
+        do {
+            try engine.start()
+            try await Task.sleep(for: .milliseconds(500))
+            engine.stop()
+            inputNode.removeTap(onBus: 0)
+        } catch {
+            speechLog.warning("Ambient noise engine error: \(error.localizedDescription)")
+            engine.stop()
+            inputNode.removeTap(onBus: 0)
+            return 0
+        }
+        
+        let level = samples.isEmpty ? 0 : samples.reduce(0, +) / Float(samples.count)
+        ambientNoiseLevel = level
+        isNoisyEnvironment = level > 0.05
+        
+        // Adaptive silence threshold based on ambient noise
+        if level > 0.1 {
+            silenceThreshold = 2.5  // Very noisy — longer silence before auto-send
+        } else if level > 0.05 {
+            silenceThreshold = 2.0  // Moderately noisy
+        } else {
+            silenceThreshold = baseSilenceThreshold  // Quiet — default
+        }
+        
+        speechLog.info("Ambient noise: \(String(format: "%.3f", level)), threshold: \(self.silenceThreshold)s, noisy: \(self.isNoisyEnvironment)")
+        return level
     }
     
     // MARK: - Start Recording
@@ -227,6 +299,12 @@ final class SpeechService {
                         self.previousTranscript = newTranscript
                         self.lastTranscriptChangeTime = Date()
                     }
+                    
+                    // Confidence-based filtering: identify low-confidence segments
+                    let segments = result.bestTranscription.segments
+                    self.lowConfidenceSegments = segments
+                        .filter { $0.confidence > 0 && $0.confidence < 0.3 }
+                        .map { $0.substring }
                     
                     self.liveTranscript = newTranscript
                     if result.isFinal {

@@ -672,6 +672,10 @@ struct OneThingView: View {
         currentIndex = 0
         if !activeQueue.isEmpty {
             hasPlayedAllClear = false
+            // Smart resurfacing: record the current top task as focused
+            if let topItem = activeQueue.first {
+                settings.recordFocus(itemID: topItem.id, content: topItem.content)
+            }
         }
         updatePenguinForCurrentTask()
         fetchPrioritySuggestionIfNeeded()

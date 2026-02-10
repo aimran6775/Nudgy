@@ -211,6 +211,23 @@ final class NudgyConversationManager {
                 toolCallsMade: totalToolCalls
             )
             
+        } catch is NudgyLLMError where NudgyLLMService.shared.isCircuitOpen {
+            #if DEBUG
+            print("⚠️ Circuit breaker open — skipping OpenAI, going to fallbacks")
+            #endif
+            
+            // Try Apple Foundation Models before dumb fallback
+            let appleFMResponse = await appleFMFallback(userMessage, modelContext: modelContext)
+            if let appleFMResponse {
+                conversationStore.addAssistantMessage(appleFMResponse.text)
+                return appleFMResponse
+            }
+            
+            // Last resort: direct action handler (keyword matching)
+            let fallbackResponse = directActionFallback(userMessage, modelContext: modelContext)
+            conversationStore.addAssistantMessage(fallbackResponse.text)
+            return fallbackResponse
+            
         } catch {
             #if DEBUG
             print("⚠️ NudgyConversation error: \(error)")

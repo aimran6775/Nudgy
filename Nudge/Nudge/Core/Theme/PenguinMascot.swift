@@ -60,6 +60,8 @@ struct PenguinMascot: View {
     @State private var breatheScale: CGFloat = 1.0
     @State private var zzzOpacity: [Double] = [0.6, 0.4, 0.2]
     @State private var zzzOffset: [CGFloat] = [0, 0, 0]
+    @State private var flipperSway: CGFloat = 0
+    @State private var microRotation: Double = 0
     
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
@@ -84,6 +86,7 @@ struct PenguinMascot: View {
         }
         .frame(width: size, height: size * 1.15)
         .scaleEffect(breatheScale)
+        .rotationEffect(.degrees(reduceMotion ? 0 : microRotation))
         .offset(x: reduceMotion ? 0 : swayOffset, y: bounceOffset)
         .onAppear { startAnimations() }
         .nudgeAccessibility(
@@ -104,37 +107,69 @@ struct PenguinMascot: View {
     //  Python: body_w = psize * 0.44, body_h = psize * 0.48, offset +8%
     
     private var penguinBody: some View {
-        PenguinBodyShape()
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(hex: "343450"), // PLUMAGE_EDGE equivalent
-                        PenguinColors.plumageDark,
-                        PenguinColors.plumageDark,
-                        Color(hex: "343450"),
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
+        ZStack {
+            PenguinBodyShape()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: "343450"), // PLUMAGE_EDGE equivalent
+                            PenguinColors.plumageDark,
+                            PenguinColors.plumageDark,
+                            Color(hex: "343450"),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
                 )
-            )
-            .frame(width: p * 0.88, height: p * 0.96)
-            .offset(y: p * 0.08)
+            
+            // Radial gradient overlay for 3D depth
+            PenguinBodyShape()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(0.04),
+                            Color.clear,
+                            Color.black.opacity(0.08)
+                        ],
+                        center: .init(x: 0.4, y: 0.35),
+                        startRadius: 0,
+                        endRadius: p * 0.5
+                    )
+                )
+        }
+        .frame(width: p * 0.88, height: p * 0.96)
+        .offset(y: p * 0.08)
+        // Subtle drop shadow to ground the penguin
+        .shadow(color: Color.black.opacity(0.25), radius: p * 0.04, y: p * 0.03)
     }
     
     // MARK: - Belly (soft oval with vertical gradient)
     //  Python: belly_w = 0.30, belly_h = 0.38, offset +14%
     
     private var penguinBelly: some View {
-        Ellipse()
-            .fill(
-                LinearGradient(
-                    colors: [PenguinColors.bellyTop, PenguinColors.bellyTop, PenguinColors.bellyBottom],
-                    startPoint: .top,
-                    endPoint: .bottom
+        ZStack {
+            Ellipse()
+                .fill(
+                    LinearGradient(
+                        colors: [PenguinColors.bellyTop, PenguinColors.bellyTop, PenguinColors.bellyBottom],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
                 )
-            )
-            .frame(width: p * 0.60, height: p * 0.76)
-            .offset(y: p * 0.14)
+            
+            // Inner warmth glow
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [Color.white.opacity(0.12), Color.clear],
+                        center: .init(x: 0.45, y: 0.4),
+                        startRadius: 0,
+                        endRadius: p * 0.25
+                    )
+                )
+        }
+        .frame(width: p * 0.60, height: p * 0.76)
+        .offset(y: p * 0.14)
     }
     
     // MARK: - Head (large round — chibi proportions)
@@ -388,7 +423,7 @@ struct PenguinMascot: View {
                     )
                 )
                 .frame(width: p * 0.10, height: p * 0.22)
-                .rotationEffect(.degrees(leftWingAngle))
+                .rotationEffect(.degrees(leftWingAngle + (reduceMotion ? 0 : Double(flipperSway))))
             
             // Right wing
             WingShape()
@@ -401,7 +436,7 @@ struct PenguinMascot: View {
                 )
                 .frame(width: p * 0.10, height: p * 0.22)
                 .scaleEffect(x: -1, y: 1)
-                .rotationEffect(.degrees(rightWingAngle))
+                .rotationEffect(.degrees(rightWingAngle - (reduceMotion ? 0 : Double(flipperSway))))
         }
         .offset(y: p * 0.02)
     }
@@ -546,6 +581,35 @@ struct PenguinMascot: View {
     private func startAnimations() {
         guard !reduceMotion else { return }
         
+        // Universal micro-life: subtle breathing on ALL expressions
+        // (sleeping overrides with bigger breath below)
+        if expression != .sleeping {
+            withAnimation(
+                .easeInOut(duration: 3.0)
+                .repeatForever(autoreverses: true)
+            ) {
+                breatheScale = 1.008
+            }
+        }
+        
+        // Universal: very subtle micro-rotation (alive feel)
+        withAnimation(
+            .easeInOut(duration: 5.0)
+            .repeatForever(autoreverses: true)
+        ) {
+            microRotation = 0.8
+        }
+        
+        // Universal: flipper idle sway (±5° gentle oscillation)
+        if [.idle, .listening, .talking, .nudging, .typing, .thinking, .confused, .waving].contains(expression) {
+            withAnimation(
+                .easeInOut(duration: 2.5)
+                .repeatForever(autoreverses: true)
+            ) {
+                flipperSway = 5
+            }
+        }
+        
         switch expression {
         case .idle, .listening, .nudging, .typing:
             startBlinkLoop()
@@ -596,17 +660,20 @@ struct PenguinMascot: View {
                     }
                 }
             }
+            // Excited rapid flap (±15°, 4 cycles)
+            startExcitedFlap()
             
         case .thinking, .confused:
             startDotCycle()
             
         case .sleeping:
-            // Gentle breathing
+            // Override breathing to bigger, slower
+            breatheScale = 1.0
             withAnimation(
                 .easeInOut(duration: 4.0)
                 .repeatForever(autoreverses: true)
             ) {
-                breatheScale = 1.012
+                breatheScale = 1.015
             }
             startZzzAnimation()
             
@@ -706,6 +773,25 @@ struct PenguinMascot: View {
         // Loop after a pause
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [self] in
             startTalkingBob()
+        }
+    }
+    
+    /// Excited rapid wing flap for celebrating/happy expressions
+    private func startExcitedFlap() {
+        guard [.celebrating, .waving, .happy].contains(expression), !reduceMotion else { return }
+        
+        // 4 rapid flaps: ±15° at 0.15s period
+        let flapSequence: [(CGFloat, TimeInterval)] = [
+            (15, 0.0), (-15, 0.15), (15, 0.30), (-15, 0.45),
+            (10, 0.60), (-10, 0.75), (5, 0.85), (0, 0.95),
+        ]
+        
+        for (angle, delay) in flapSequence {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                withAnimation(.spring(response: 0.1, dampingFraction: 0.5)) {
+                    self.flipperSway = angle
+                }
+            }
         }
     }
     

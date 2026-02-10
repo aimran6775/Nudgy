@@ -1187,6 +1187,14 @@ struct NudgyHomeView: View {
         let staleCount = activeQueue.filter { $0.accentStatus == .stale }.count
         let doneToday = grouped.doneToday.count
 
+        // Smart resurfacing: welcome back with context about last focused task
+        if let welcomeBack = NudgyEngine.shared.welcomeBack(settings: settings, activeQueue: activeQueue) {
+            penguinState.queueDialogue(welcomeBack, style: .speech, autoDismiss: 6.0)
+        }
+        
+        // Record activity timestamp
+        settings.recordActivity()
+
         NudgyEngine.shared.greet(
             userName: settings.userName,
             activeTaskCount: activeQueue.count,
