@@ -305,6 +305,9 @@ struct NudgesView: View {
                     let items = horizonGroups.items(for: horizon)
                     if !items.isEmpty {
                         horizonSection(for: horizon, items: items)
+                    } else if horizon.showsEmptyState {
+                        // Phase 4: Smart empty state for key sections
+                        horizonEmptySection(for: horizon)
                     }
                 }
             }
@@ -341,67 +344,127 @@ struct NudgesView: View {
         }
     }
     
-    /// Picks the right row component for an item based on whether it has actions/drafts.
-    /// Wraps each row in SwipeableRow for gesture-based actions.
-    @ViewBuilder
-    private func itemRow(for item: NudgeItem, in horizon: TimeHorizon) -> some View {
-        if horizon == .doneToday {
-            // Done items — no swipe actions
-            InboxItemRow(
-                item: item,
-                onTap: { editingItem = item },
-                onDone: nil,
-                onSnooze: nil,
-                onBreakDown: nil
-            )
-        } else if (item.hasAction || item.hasDraft) {
-            // Actionable items — richer row with swipe
-            SwipeableRow(
-                content: {
-                    ActionableNudgeRow(
-                        item: item,
-                        onTap: { editingItem = item },
-                        onAction: { performAction(item) },
-                        onDone: { markDoneWithUndo(item) },
-                        onViewDraft: { showDraftFor = item }
-                    )
-                },
-                onSwipeLeading: { markDoneWithUndo(item) },
-                onSwipeTrailing: horizon != .snoozed ? { showSnoozeFor = item } : nil
-            )
-        } else if horizon == .snoozed {
-            // Snoozed items — swipe to done only
-            SwipeableRow(
-                content: {
-                    InboxItemRow(
-                        item: item,
-                        onTap: { editingItem = item },
-                        onDone: { markDoneWithUndo(item) },
-                        onSnooze: nil,
-                        onBreakDown: nil
-                    )
-                },
-                onSwipeLeading: { markDoneWithUndo(item) }
-            )
-        } else {
-            // Regular active items — full swipe (done + snooze)
-            SwipeableRow(
-                content: {
-                    InboxItemRow(
-                        item: item,
-                        onTap: { editingItem = item },
-                        onDone: { markDoneWithUndo(item) },
-                        onSnooze: { showSnoozeFor = item },
-                        onBreakDown: { showBreakdownFor = item }
-                    )
-                },
-                onSwipeLeading: { markDoneWithUndo(item) },
-                onSwipeTrailing: { showSnoozeFor = item }
+    /// Phase 4: Empty state for a section with no items.
+    /// Shows a contextual, encouraging message instead of hiding the section.
+    private func horizonEmptySection(for horizon: TimeHorizon) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Section header (non-interactive — no collapse for empty)
+            HStack(spacing: DesignTokens.spacingSM) {
+                Image(systemName: horizon.icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(horizon.accentColor.opacity(0.5))
+                    .frame(width: 20)
+                
+                Text(horizon.title)
+                    .font(AppTheme.caption.weight(.semibold))
+                    .foregroundStyle(DesignTokens.textTertiary)
+                    .textCase(.uppercase)
+                
+                Spacer()
+            }
+            .padding(.horizontal, DesignTokens.spacingXS)
+            .padding(.vertical, DesignTokens.spacingXS)
+            
+            // Empty message
+            SectionEmptyState(
+                horizon: horizon,
+                hasCompletedToday: !horizonGroups.doneToday.isEmpty
             )
         }
     }
+    
+    /// Picks the right row component for an item based on whether it has actions/drafts.
+    /// Wraps each row in SwipeableRow for gesture-based actions.
+    /// Phase 3: Adds inline micro-step expansion below the row when expanded.
+    @ViewBuilder
+    private func itemRow(for item: NudgeItem, in horizon: TimeHorizon) -> some View {
+        VStack(spacing: 0) {
+            if horizon == .doneToday {
+                // Done items — no swipe actions
+                InboxItemRow(
+                    item: item,
+                    onTap: { editingItem = item },
+                    onDone: nil,
+                    onSnooze: nil,
+                    onBreakDown: nil
+                )
+            } else if (item.hasAction || item.hasDraft) {
+                // Actionable items — richer row with swipe
+                SwipeableRow(
+                    content: {
+                        ActionableNudgeRow(
+                            item: item,
+                            onTap: { editingItem = item },
+                            onAction: { performAction(item) },
+                            onDone: { markDoneWithUndo(item) },
+                            onViewDraft: { showDraftFor = item }
+                        )
+                    },
+                    onSwipeLeading: { markDoneWithUndo(item) },
+                    onSwipeTrailing: horizon != .snoozed ? { showSnoozeFor = item } : nil
+                )
+            } else if horizon == .snoozed {
+                // Snoozed items — swipe to done only
+                SwipeableRow(
+                    content: {
+                        InboxItemRow(
+                            item: item,
+                            onTap: { editingItem = item },
+                            onDone: { markDoneWithUndo(item) },
+                            onSnooze: nil,
+                            onBreakDown: nil
+                        )
+                    },
+                    onSwipeLeading: { markDoneWithUndo(item) }
+                )
+            } else {
+                // Regular active items — full swipe + inline micro-step toggle
+                SwipeableRow(
+                    content: {
+                        InboxItemRow(
+                            item: item,
+                            onTap: { editingItem = item },
+                            onDone: { markDoneWithUndo(item) },
+                            onSnooze: { showSnoozeFor = item },
+                            onBreakDown: { toggleMicroSteps(for: item) }
+                        )
+                    },
+                    onSwipeLeading: { markDoneWithUndo(item) },
+                    onSwipeTrailing: { showSnoozeFor = item }
+                )
+            }
+            
+            // Phase 3: Inline micro-step expansion
+            if expandedMicroSteps.contains(item.id) {
+                let isLoading = microStepsLoading.contains(item.id)
+                let steps = Binding<[MicroStep]>(
+                    get: { microStepsCache[item.id] ?? [] },
+                    set: { microStepsCache[item.id] = $0 }
+                )
+                
+                InlineMicroSteps(
+                    parentItem: item,
+                    steps: steps,
+                    isLoading: isLoading,
+                    onAllComplete: {
+                        // All micro-steps checked — complete the parent
+                        collapseMicroSteps(for: item)
+                        markDoneWithUndo(item)
+                    },
+                    onCollapse: {
+                        collapseMicroSteps(for: item)
+                    }
+                )
+                .padding(.leading, DesignTokens.spacingSM)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)).combined(with: .scale(scale: 0.95, anchor: .top)),
+                    removal: .opacity.combined(with: .scale(scale: 0.95, anchor: .top))
+                ))
+            }
+        }
+    }
 
-    // MARK: - Empty View
+    // MARK: - Empty View (Phase 4: Time-aware, personality-driven)
 
     private var emptyView: some View {
         VStack(spacing: DesignTokens.spacingXL) {
@@ -409,39 +472,61 @@ struct NudgesView: View {
 
             PenguinSceneView(
                 size: .large,
-                expressionOverride: .sleeping,
+                expressionOverride: emptyViewExpression,
                 accentColorOverride: DesignTokens.textTertiary
             )
 
             VStack(spacing: DesignTokens.spacingSM) {
-                Text(String(localized: "No nudges yet"))
+                Text(emptyViewTitle)
                     .font(AppTheme.headline)
                     .foregroundStyle(DesignTokens.textPrimary)
 
-                Text(String(localized: "Talk to Nudgy to create your first nudge"))
+                Text(emptyViewSubtitle)
                     .font(AppTheme.body)
                     .foregroundStyle(DesignTokens.textSecondary)
                     .multilineTextAlignment(.center)
+                    .padding(.horizontal, DesignTokens.spacingXL)
             }
-
-            Button {
-                // Navigate to Nudgy tab
-                NotificationCenter.default.post(name: .nudgeOpenChat, object: nil)
-            } label: {
-                HStack(spacing: DesignTokens.spacingSM) {
-                    Image(systemName: "bubble.left.fill")
-                    Text(String(localized: "Talk to Nudgy"))
+            
+            HStack(spacing: DesignTokens.spacingMD) {
+                // Primary CTA — talk to Nudgy
+                Button {
+                    NotificationCenter.default.post(name: .nudgeOpenChat, object: nil)
+                } label: {
+                    HStack(spacing: DesignTokens.spacingSM) {
+                        Image(systemName: "bubble.left.fill")
+                        Text(String(localized: "Talk to Nudgy"))
+                    }
+                    .font(AppTheme.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, DesignTokens.spacingXL)
+                    .padding(.vertical, DesignTokens.spacingMD)
+                    .background(
+                        Capsule()
+                            .fill(DesignTokens.accentActive)
+                    )
                 }
-                .font(AppTheme.body.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, DesignTokens.spacingXL)
-                .padding(.vertical, DesignTokens.spacingMD)
-                .background(
-                    Capsule()
-                        .fill(DesignTokens.accentActive)
-                )
+                .buttonStyle(.plain)
+                
+                // Secondary CTA — quick add
+                Button {
+                    NotificationCenter.default.post(name: .nudgeOpenQuickAdd, object: nil)
+                } label: {
+                    HStack(spacing: DesignTokens.spacingXS) {
+                        Image(systemName: "plus")
+                        Text(String(localized: "Add"))
+                    }
+                    .font(AppTheme.body.weight(.semibold))
+                    .foregroundStyle(DesignTokens.accentActive)
+                    .padding(.horizontal, DesignTokens.spacingLG)
+                    .padding(.vertical, DesignTokens.spacingMD)
+                    .background(
+                        Capsule()
+                            .strokeBorder(DesignTokens.accentActive.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             Spacer()
         }
@@ -517,6 +602,47 @@ struct NudgesView: View {
     private func dismissPickedCard() {
         withAnimation(.easeOut(duration: 0.2)) {
             showPickedCard = false
+        }
+    }
+    
+    // MARK: - Inline Micro-Steps (Phase 3)
+    
+    /// Toggle inline micro-step expansion for an item.
+    /// First expansion triggers AI generation (or instant heuristic fallback).
+    private func toggleMicroSteps(for item: NudgeItem) {
+        let id = item.id
+        
+        if expandedMicroSteps.contains(id) {
+            // Collapse
+            collapseMicroSteps(for: item)
+        } else {
+            // Expand
+            HapticService.shared.prepare()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                expandedMicroSteps.insert(id)
+            }
+            
+            // Generate if not cached
+            if microStepsCache[id] == nil {
+                microStepsLoading.insert(id)
+                Task {
+                    let steps = await MicroStepGenerator.generate(
+                        for: item.content,
+                        emoji: item.emoji
+                    )
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        microStepsCache[id] = steps
+                        microStepsLoading.remove(id)
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Collapse micro-steps for an item (keeps cache for re-expansion).
+    private func collapseMicroSteps(for item: NudgeItem) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            expandedMicroSteps.remove(item.id)
         }
     }
 
