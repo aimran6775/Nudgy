@@ -128,6 +128,47 @@ struct YouView: View {
                             }
                         }
 
+                        // Routines
+                        youSection(title: String(localized: "Routines")) {
+                            NavigationLink {
+                                RoutineListView()
+                            } label: {
+                                youRow(
+                                    icon: "arrow.trianglehead.2.counterclockwise.circle.fill",
+                                    title: String(localized: "My Routines"),
+                                    subtitle: String(localized: "Auto-generate daily tasks from repeating habits")
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        // Mood & Insights
+                        youSection(title: String(localized: "Mood")) {
+                            VStack(spacing: DesignTokens.spacingSM) {
+                                NavigationLink {
+                                    MoodCheckInView()
+                                } label: {
+                                    youRow(
+                                        icon: "face.smiling.inverse",
+                                        title: String(localized: "Check In Now"),
+                                        subtitle: String(localized: "Log how you're feeling today")
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                
+                                NavigationLink {
+                                    MoodInsightsView()
+                                } label: {
+                                    youRow(
+                                        icon: "chart.line.uptrend.xyaxis",
+                                        title: String(localized: "Mood Insights"),
+                                        subtitle: String(localized: "See trends and productivity patterns")
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
                         // Lock Screen
                         youSection(title: String(localized: "Lock Screen")) {
                             VStack(spacing: DesignTokens.spacingSM) {
@@ -152,6 +193,21 @@ struct YouView: View {
 
                         youSection(title: String(localized: "Nudgy")) {
                             VStack(spacing: DesignTokens.spacingMD) {
+                                // Nudgy's Memory
+                                NavigationLink {
+                                    NudgyMemoryView()
+                                } label: {
+                                    youRow(
+                                        icon: "brain.head.profile.fill",
+                                        title: String(localized: "Nudgy's Memory"),
+                                        subtitle: String(localized: "See what Nudgy remembers about you")
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Divider()
+                                    .overlay(Color.white.opacity(0.06))
+                                
                                 // Voice on/off toggle
                                 Toggle(isOn: Binding(
                                     get: { NudgyVoiceOutput.shared.isEnabled },

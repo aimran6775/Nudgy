@@ -204,11 +204,11 @@ struct NudgyChatView: View {
             )
             
             VStack(spacing: DesignTokens.spacingSM) {
-                Text(String(localized: "*happy waddle* 🐧"))
+                Text(String(localized: "Oh, hello there 🐧"))
                     .font(AppTheme.headline)
                     .foregroundStyle(DesignTokens.textPrimary)
                 
-                Text(String(localized: "Talk to me about your tasks, ask me to help you prioritize, or just vent. I'm a penguin — I don't judge."))
+                Text(String(localized: "Tell me what's on your mind… tasks, feelings, whatever. I'm just a small penguin, but I'm good at sitting with things."))
                     .font(AppTheme.body)
                     .foregroundStyle(DesignTokens.textSecondary)
                     .multilineTextAlignment(.center)
@@ -333,6 +333,9 @@ struct NudgyChatView: View {
                 suggestionChip("What should I tackle first?", icon: "star.fill")
                 suggestionChip("How's my day looking?", icon: "chart.bar.fill")
                 suggestionChip("Help me break this down", icon: "sparkles")
+                suggestionChip("I'm feeling stuck", icon: "hand.raised.fill")
+                suggestionChip("I'm overwhelmed", icon: "cloud.rain.fill")
+                suggestionChip("Work with me on this", icon: "figure.walk")
                 suggestionChip("Anything overdue?", icon: "exclamationmark.triangle.fill")
                 suggestionChip("Add something new", icon: "plus.circle.fill")
             }
@@ -417,7 +420,18 @@ struct NudgyChatView: View {
         
         inputText = ""
         HapticService.shared.prepare()
-        
+
+        // ADHD: Detect mood and adjust penguin expression before sending
+        let mood = NudgyEngine.shared.detectMood(from: text)
+        switch mood {
+        case .overwhelmed, .anxious, .sad:
+            penguinState.expression = .confused
+        case .frustrated:
+            penguinState.expression = .confused
+        default:
+            break
+        }
+
         // Route through NudgyEngine for OpenAI-powered conversation
         NudgyEngine.shared.chat(text, modelContext: modelContext)
     }

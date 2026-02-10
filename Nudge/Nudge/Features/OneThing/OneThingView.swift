@@ -475,7 +475,20 @@ struct OneThingView: View {
     private func snoozeItem(_ item: NudgeItem, until date: Date) {
         repository?.snooze(item, until: date)
         NudgyEngine.shared.reactToSnooze(taskContent: item.content)
-        
+
+        // ADHD: Snooze pattern insight — gentle observation when a task keeps getting pushed
+        let daysSinceCreated = Calendar.current.dateComponents([.day], from: item.createdAt, to: .now).day ?? 0
+        let sameTaskSnoozes = max(1, daysSinceCreated / 2) // Approximate: older tasks likely snoozed more
+        let totalTasks = activeQueue.count
+        let insight = NudgyEngine.shared.analyzeSnoozePattern(
+            snoozeCount: sameTaskSnoozes,
+            totalTasks: totalTasks,
+            sameTaskSnoozes: sameTaskSnoozes
+        )
+        if let suggestion = NudgyEngine.shared.snoozeSuggestion(for: insight) {
+            penguinState.queueDialogue(suggestion, style: .whisper, autoDismiss: 6.0)
+        }
+
         Task {
             let permitted = await NotificationService.shared.requestPermission()
             if permitted {
@@ -544,6 +557,7 @@ struct OneThingView: View {
     }
     
     private func advanceToNext() {
+        let previousContent = currentItem?.content
         cardAppeared = false
         refreshQueue()
         
@@ -551,8 +565,19 @@ struct OneThingView: View {
             withAnimation(AnimationConstants.cardAppear) {
                 cardAppeared = true
             }
-            if currentItem != nil {
+            if let nextItem = currentItem {
                 HapticService.shared.cardAppear()
+
+                // ADHD: Transition support — help the brain switch gears
+                if let prev = previousContent {
+                    Task {
+                        let msg = await NudgyEngine.shared.transitionTo(
+                            nextTask: nextItem.content,
+                            from: prev
+                        )
+                        penguinState.queueDialogue(msg, style: .whisper, autoDismiss: 5.0)
+                    }
+                }
             }
         }
     }

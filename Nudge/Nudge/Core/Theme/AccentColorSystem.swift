@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 
 // MARK: - Accent Color System
 
@@ -112,19 +113,19 @@ enum AccentStatus {
 /// Wraps any view to automatically update the accent color every 5 minutes.
 /// Use this at the root of your view hierarchy.
 struct TimeAwareAccentWrapper<Content: View>: View {
-    @Bindable var accentSystem = AccentColorSystem.shared
+    var accentSystem = AccentColorSystem.shared
     let content: () -> Content
+    
+    let timer = Timer.publish(every: 300, on: .main, in: .common).autoconnect()
     
     init(@ViewBuilder content: @escaping () -> Content) {
         self.content = content
     }
     
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 300)) { context in
-            content()
-                .onChange(of: context.date) { _, _ in
-                    accentSystem.updateTimeAwareAccent()
-                }
-        }
+        content()
+            .onReceive(timer) { _ in
+                accentSystem.updateTimeAwareAccent()
+            }
     }
 }

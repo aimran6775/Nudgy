@@ -17,6 +17,8 @@
 	<string>Nudge uses on-device speech recognition to turn your spoken words into task cards.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>Nudge can look up contacts so you can quickly call or message someone from a task card.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Nudge shows your calendar events alongside tasks in the timeline view so you can see your full day at a glance.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>com.tarsitgroup.nudge.viewTask</string>

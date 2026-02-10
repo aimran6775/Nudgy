@@ -295,6 +295,12 @@ final class NudgyMemory {
         try? FileManager.default.removeItem(at: fileURL)
     }
     
+    /// Forget (remove) a specific fact by ID.
+    func forget(_ factID: UUID) {
+        store.facts.removeAll { $0.id == factID }
+        save()
+    }
+    
     /// Export memory as JSON data (for debugging/backup).
     func exportJSON() -> Data? {
         try? JSONEncoder().encode(store)

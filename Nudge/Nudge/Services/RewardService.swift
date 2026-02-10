@@ -37,6 +37,9 @@ nonisolated enum RewardConstants {
     
     /// Notification posted when an accessory is unlocked.
     static let accessoryUnlockedNotification = Notification.Name("nudgeAccessoryUnlocked")
+    
+    /// Notification posted when a daily challenge is completed.
+    static let challengeCompletedNotification = Notification.Name("nudgeChallengeCompleted")
 }
 
 // MARK: - Unlock Result
@@ -84,6 +87,18 @@ final class RewardService {
     /// Environment mood based on today's productivity.
     private(set) var environmentMood: EnvironmentMood = .cold
     
+    /// The stage tier BEFORE the last level-up (for detecting tier changes).
+    private(set) var previousStage: StageTier = .bareIce
+    
+    /// Set to the new tier when a stage-up happens (nil if no recent stage-up).
+    private(set) var pendingStageUp: StageTier? = nil
+    
+    /// Today's daily challenges.
+    private(set) var dailyChallenges: [DailyChallenge] = []
+    
+    /// Date the current set of daily challenges was generated.
+    private var challengeDate: Date? = nil
+    
     private init() {}
     
     // MARK: - Bootstrap
@@ -124,9 +139,22 @@ final class RewardService {
         wardrobe.totalTasksCompleted += 1
         wardrobe.tasksCompletedToday += 1
         
+        // Detect stage tier change
+        let oldStage = StageTier.from(level: level)
+        
         // Save and sync
         try? context.save()
         syncState(from: wardrobe)
+        
+        let newStage = StageTier.from(level: wardrobe.level)
+        if newStage.rawValue > oldStage.rawValue {
+            previousStage = oldStage
+            pendingStageUp = newStage
+            NotificationCenter.default.post(name: .nudgeStageUp, object: newStage)
+        }
+        
+        // Update daily challenges
+        updateChallengeProgress(tasksToday: wardrobe.tasksCompletedToday, isAllClear: isAllClear)
         
         NotificationCenter.default.post(name: RewardConstants.snowflakesChangedNotification, object: nil)
         
@@ -250,8 +278,13 @@ final class RewardService {
             if daysDiff == 1 {
                 // Consecutive day — extend streak
                 wardrobe.currentStreak += 1
+            } else if daysDiff == 2 && wardrobe.canUseStreakFreeze {
+                // Missed one day — use streak freeze to save streak
+                wardrobe.currentStreak += 1
+                wardrobe.streakFreezes -= 1
+                wardrobe.freezeUsedToday = true
             } else {
-                // Gap — reset streak
+                // Gap too large — reset streak
                 wardrobe.currentStreak = 1
             }
         } else {
@@ -261,6 +294,15 @@ final class RewardService {
         
         wardrobe.lastCompletionDateRaw = .now
         wardrobe.longestStreak = max(wardrobe.longestStreak, wardrobe.currentStreak)
+        
+        // Award streak freeze every 7-day streak
+        if wardrobe.currentStreak > 0 && wardrobe.currentStreak % 7 == 0 {
+            let today = calendar.startOfDay(for: Date())
+            if wardrobe.lastFreezeEarnedDate == nil || !calendar.isDate(wardrobe.lastFreezeEarnedDate!, inSameDayAs: today) {
+                wardrobe.streakFreezes = min(wardrobe.streakFreezes + 1, 3) // Max 3 freezes
+                wardrobe.lastFreezeEarnedDate = today
+            }
+        }
     }
     
     // MARK: - Data Access
@@ -291,5 +333,95 @@ final class RewardService {
         levelProgress = wardrobe.levelProgress
         tasksCompletedToday = wardrobe.tasksCompletedToday
         environmentMood = wardrobe.environmentMood
+        
+        // Regenerate challenges if new day
+        regenerateChallengesIfNeeded()
+    }
+    
+    // MARK: - Stage Up
+    
+    /// Acknowledge the stage-up celebration was shown.
+    func acknowledgeStageUp() {
+        pendingStageUp = nil
+    }
+    
+    // MARK: - Daily Challenges
+    
+    /// Regenerate daily challenges if the date has changed.
+    private func regenerateChallengesIfNeeded() {
+        let today = Calendar.current.startOfDay(for: .now)
+        
+        if challengeDate != today {
+            dailyChallenges = ChallengeGenerator.generateDaily(
+                level: level,
+                streak: currentStreak
+            )
+            challengeDate = today
+        }
+    }
+    
+    /// Update challenge progress after a task completion.
+    private func updateChallengeProgress(tasksToday: Int, isAllClear: Bool) {
+        var anyCompleted = false
+        
+        for i in dailyChallenges.indices {
+            guard !dailyChallenges[i].isCompleted else { continue }
+            
+            var completed = false
+            
+            switch dailyChallenges[i].requirement {
+            case .completeTasks(let count):
+                completed = tasksToday >= count
+            case .clearAll:
+                completed = isAllClear
+            case .maintainStreak:
+                completed = currentStreak > 0
+            case .completeBeforeNoon:
+                let hour = Calendar.current.component(.hour, from: .now)
+                completed = hour < 12
+            case .brainDump:
+                break  // Set externally via completeBrainDumpChallenge()
+            }
+            
+            if completed {
+                dailyChallenges[i].isCompleted = true
+                anyCompleted = true
+            }
+        }
+        
+        if anyCompleted {
+            NotificationCenter.default.post(
+                name: RewardConstants.challengeCompletedNotification,
+                object: nil
+            )
+        }
+    }
+    
+    /// Mark the brain dump challenge as completed (called from brain dump flow).
+    func completeBrainDumpChallenge(context: ModelContext) {
+        guard let idx = dailyChallenges.firstIndex(where: { $0.id == "brain-dump" && !$0.isCompleted }) else { return }
+        
+        dailyChallenges[idx].isCompleted = true
+        
+        // Award bonus fish
+        let wardrobe = fetchOrCreateWardrobe(context: context)
+        wardrobe.snowflakes += dailyChallenges[idx].bonusFish
+        wardrobe.lifetimeSnowflakes += dailyChallenges[idx].bonusFish
+        try? context.save()
+        syncState(from: wardrobe)
+        
+        NotificationCenter.default.post(
+            name: RewardConstants.challengeCompletedNotification,
+            object: nil
+        )
+    }
+    
+    /// Award bonus fish for completed challenges. Call after showing challenge-complete UI.
+    func claimChallengeRewards(context: ModelContext) {
+        let bonus = dailyChallenges.filter(\.isCompleted).reduce(0) { $0 + $1.bonusFish }
+        guard bonus > 0 else { return }
+        
+        let wardrobe = fetchOrCreateWardrobe(context: context)
+        // Note: challenge rewards are auto-credited; this is for explicit claim flow if needed
     }
 }

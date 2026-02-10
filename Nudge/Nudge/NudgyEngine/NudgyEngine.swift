@@ -422,6 +422,16 @@ final class NudgyEngine {
         await dialogue.paralysisSupport(staleTasks: staleTasks)
     }
     
+    /// Get overwhelm support when there are too many tasks.
+    func overwhelmSupport() -> String {
+        dialogue.overwhelmSupport()
+    }
+    
+    /// Hyperfocus check-in for extended work sessions.
+    func hyperfocusCheckIn() -> String {
+        dialogue.hyperfocusCheckIn()
+    }
+    
     // MARK: - All Clear / Rest
     
     /// Show all-clear state.

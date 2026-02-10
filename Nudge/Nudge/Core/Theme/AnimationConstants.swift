@@ -131,6 +131,9 @@ enum AnimationConstants {
     /// Snooze picker slide-up
     static let sheetPresent: Animation = .spring(response: 0.4, dampingFraction: 0.85)
     
+    /// General-purpose smooth spring for UI state toggles
+    static let springSmooth: Animation = .spring(response: 0.35, dampingFraction: 0.8)
+    
     /// Onboarding page transition
     static let pageTransition: Animation = .spring(response: 0.5, dampingFraction: 0.8)
     

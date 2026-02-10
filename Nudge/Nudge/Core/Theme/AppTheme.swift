@@ -21,6 +21,12 @@ enum AppTheme {
     /// Card task title — the main text users read
     static let taskTitle: Font = .system(.title2, design: .default, weight: .semibold)
     
+    /// Medium title — used in overlays and editors
+    static let title2: Font = .system(.title2, design: .default, weight: .semibold)
+    
+    /// Small title — section names, form field headings
+    static let title3: Font = .system(.title3, design: .default, weight: .semibold)
+    
     /// Section headers, button labels
     static let headline: Font = .system(.headline, design: .default, weight: .semibold)
     

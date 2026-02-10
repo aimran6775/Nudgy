@@ -141,6 +141,35 @@ final class NudgeItem {
     var aiDraftSubject: String?
     var draftGeneratedAt: Date?
     
+    // MARK: Duration & Scheduling
+    
+    /// Estimated minutes to complete (AI-inferred or user-set)
+    var estimatedMinutes: Int?
+    
+    /// Scheduled start time for timeline view
+    var scheduledTime: Date?
+    
+    /// Actual minutes spent in focus timer (tracked)
+    var actualMinutes: Int?
+    
+    // MARK: Categorization
+    
+    /// Custom category color hex (user-chosen from palette)
+    var categoryColorHex: String?
+    
+    /// Custom category icon SF Symbol name
+    var categoryIcon: String?
+    
+    // MARK: Routine
+    
+    /// ID of the routine this task was generated from (nil = ad-hoc task)
+    var routineID: UUID?
+    
+    // MARK: Energy
+    
+    /// Energy level required: "low", "medium", "high" (for energy-aware scheduling)
+    var energyLevelRaw: String?
+    
     // MARK: Relationships
     var brainDump: BrainDump?
     
@@ -158,7 +187,13 @@ final class NudgeItem {
         contactName: String? = nil,
         sortOrder: Int = 0,
         priority: TaskPriority? = nil,
-        dueDate: Date? = nil
+        dueDate: Date? = nil,
+        estimatedMinutes: Int? = nil,
+        scheduledTime: Date? = nil,
+        routineID: UUID? = nil,
+        energyLevel: EnergyLevel? = nil,
+        categoryColorHex: String? = nil,
+        categoryIcon: String? = nil
     ) {
         self.id = id
         self.content = content
@@ -176,6 +211,12 @@ final class NudgeItem {
         self.sortOrder = sortOrder
         self.priorityRaw = priority?.rawValue
         self.dueDate = dueDate
+        self.estimatedMinutes = estimatedMinutes
+        self.scheduledTime = scheduledTime
+        self.routineID = routineID
+        self.energyLevelRaw = energyLevel?.rawValue
+        self.categoryColorHex = categoryColorHex
+        self.categoryIcon = categoryIcon
     }
     
     // MARK: Computed — Source Type
@@ -289,5 +330,68 @@ final class NudgeItem {
     func drop() {
         status = .dropped
         updatedAt = Date()
+    }
+    
+    // MARK: Computed — Energy Level
+    
+    var energyLevel: EnergyLevel? {
+        get { energyLevelRaw.flatMap { EnergyLevel(rawValue: $0) } }
+        set { energyLevelRaw = newValue?.rawValue }
+    }
+    
+    /// Custom category color (if set)
+    var categoryColor: Color? {
+        categoryColorHex.map { Color(hex: $0) }
+    }
+    
+    /// Formatted duration string (e.g. "15 min")
+    var durationLabel: String? {
+        guard let mins = estimatedMinutes else { return nil }
+        if mins < 60 {
+            return "\(mins) min"
+        } else {
+            let hours = mins / 60
+            let remainder = mins % 60
+            return remainder > 0 ? "\(hours)h \(remainder)m" : "\(hours)h"
+        }
+    }
+    
+    /// Whether this task was generated from a routine
+    var isFromRoutine: Bool {
+        routineID != nil
+    }
+}
+
+// MARK: - Energy Level
+
+/// Required energy level for a task — used for energy-aware scheduling.
+enum EnergyLevel: String, Codable, CaseIterable {
+    case low    = "low"
+    case medium = "medium"
+    case high   = "high"
+    
+    var label: String {
+        switch self {
+        case .low:    return String(localized: "Low Energy")
+        case .medium: return String(localized: "Medium Energy")
+        case .high:   return String(localized: "High Energy")
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .low:    return "battery.25percent"
+        case .medium: return "battery.50percent"
+        case .high:   return "battery.100percent"
+        }
+    }
+    
+    /// Recommended time-of-day for this energy level
+    var optimalTimeRange: ClosedRange<Int> {
+        switch self {
+        case .high:   return 9...12   // Morning peak
+        case .medium: return 13...17  // Afternoon
+        case .low:    return 18...22  // Evening wind-down
+        }
     }
 }

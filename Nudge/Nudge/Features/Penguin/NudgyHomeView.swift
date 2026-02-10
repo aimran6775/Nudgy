@@ -45,6 +45,13 @@ struct NudgyHomeView: View {
     @State private var activeQueue: [NudgeItem] = []
     /// Fish HUD position for reward animation target
     @State private var fishHUDPosition: CGPoint = .zero
+    
+    /// Stage-up celebration overlay
+    @State private var showStageUpCelebration = false
+    @State private var stageUpTier: StageTier = .bareIce
+    
+    /// Mood reactor for Nudgy expressions
+    private let moodReactor = PenguinMoodReactor.shared
 
 
     var body: some View {
@@ -62,6 +69,13 @@ struct NudgyHomeView: View {
                 // Top bar — mute + wardrobe + snowflakes
                 topBar
                     .padding(.horizontal, DesignTokens.spacingLG)
+
+                // Daily challenges panel (expandable quests)
+                if !RewardService.shared.dailyChallenges.isEmpty {
+                    DailyChallengesPanel(challenges: RewardService.shared.dailyChallenges)
+                        .padding(.horizontal, DesignTokens.spacingLG)
+                        .transition(.opacity)
+                }
 
                 Spacer()
 
@@ -110,15 +124,41 @@ struct NudgyHomeView: View {
 
             // Fish reward animation overlay
             FishRewardOverlay()
+            
+            // Stage-up celebration overlay
+            if showStageUpCelebration {
+                StageUpCelebration(newStage: stageUpTier) {
+                    showStageUpCelebration = false
+                    RewardService.shared.acknowledgeStageUp()
+                }
+                .transition(.opacity)
+                .zIndex(100)
+            }
         }
         .preferredColorScheme(.dark)
         .onAppear {
             greetIfNeeded()
             startBreathingAnimation()
             refreshActiveQueue()
+            updateMoodReactor()
         }
         .onReceive(NotificationCenter.default.publisher(for: .nudgeDataChanged)) { _ in
             refreshActiveQueue()
+            updateMoodReactor()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .nudgeStageUp)) { notification in
+            if let newStage = notification.object as? StageTier {
+                stageUpTier = newStage
+                HapticService.shared.prepare()
+                withAnimation(.spring(response: 0.4)) {
+                    showStageUpCelebration = true
+                }
+                penguinState.expression = .celebrating
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: RewardConstants.challengeCompletedNotification)) { _ in
+            // Nudgy reacts to challenge completion
+            HapticService.shared.prepare()
         }
         .onChange(of: speechService.state) { _, newState in
             handleSpeechStateChange(newState)
@@ -224,28 +264,55 @@ struct NudgyHomeView: View {
     // MARK: - Nudgy Character (center of screen)
 
     private var nudgyCharacter: some View {
-        PenguinSceneView(
-            size: .hero,
-            onTap: {
-                // Tapping Nudgy during conversation = end conversation
-                if isVoiceConversation {
-                    endVoiceConversation()
-                } else if isListeningToUser {
-                    stopListening()
-                } else if penguinState.isChatGenerating {
-                    // Nudgy is thinking — let the user know
-                    HapticService.shared.prepare()
-                } else {
-                    // Start voice conversation — Nudgy is a companion you TALK to
-                    startVoiceConversation()
+        ZStack {
+            PenguinSceneView(
+                size: .hero,
+                onTap: {
+                    moodReactor.userDidInteract()
+                    // Tapping Nudgy during conversation = end conversation
+                    if isVoiceConversation {
+                        endVoiceConversation()
+                    } else if isListeningToUser {
+                        stopListening()
+                    } else if penguinState.isChatGenerating {
+                        // Nudgy is thinking — let the user know
+                        HapticService.shared.prepare()
+                    } else {
+                        // Start voice conversation — Nudgy is a companion you TALK to
+                        startVoiceConversation()
+                    }
+                },
+                onChatTap: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showHistory.toggle()
+                    }
                 }
-            },
-            onChatTap: {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    showHistory.toggle()
-                }
+            )
+            .shiverEffect(moodReactor.isShivering && !isListeningToUser && !isVoiceConversation)
+            
+            // Sleep z-bubbles when Nudgy is napping
+            if moodReactor.isSleeping {
+                SleepBubble()
+                    .offset(x: 40, y: -80)
+                    .transition(.opacity)
             }
-        )
+            
+            // Micro-reaction bubble
+            if let reaction = moodReactor.microReaction {
+                Text(reaction)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(.ultraThinMaterial)
+                    )
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+                    .offset(y: -130)
+                    .transition(.opacity.combined(with: .offset(y: 10)))
+            }
+        }
     }
 
     // MARK: - Listening Indicator
@@ -1070,8 +1137,18 @@ struct NudgyHomeView: View {
             NudgyEngine.shared.startChat()
         }
 
-        // Show thinking state immediately
-        penguinState.expression = .thinking
+        // ADHD: Detect mood from user's text and adjust penguin expression
+        let mood = NudgyEngine.shared.detectMood(from: text)
+        switch mood {
+        case .overwhelmed, .anxious, .sad:
+            penguinState.expression = .confused
+        case .frustrated:
+            penguinState.expression = .confused
+        case .positive, .neutral:
+            penguinState.expression = .thinking
+        }
+
+        // Show thinking state
         penguinState.say(String(localized: "Let me think..."), style: .thought, autoDismiss: nil)
         HapticService.shared.prepare()
         
@@ -1117,6 +1194,41 @@ struct NudgyHomeView: View {
             staleCount: staleCount,
             doneToday: doneToday
         )
+
+        // ADHD: Show streak acknowledgment if applicable
+        let streak = RewardService.shared.currentStreak
+        if streak >= 3, let streakMsg = NudgyEngine.shared.streakMessage(days: streak) {
+            penguinState.queueDialogue(streakMsg, style: .whisper, autoDismiss: 4.0)
+        }
+
+        // ADHD: Emotional check-in — gentle "how are you?" if it's been a while
+        if NudgyEngine.shared.shouldCheckIn {
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                if let checkIn = await NudgyEngine.shared.emotionalCheckIn() {
+                    penguinState.queueDialogue(checkIn, style: .speech, autoDismiss: 8.0)
+                }
+            }
+        }
+
+        // ADHD: Proactive paralysis support for stale tasks
+        let staleTasks = activeQueue.filter { $0.isStale }.map { $0.content }
+        if staleTasks.count >= 2 {
+            Task {
+                try? await Task.sleep(for: .seconds(6))
+                let support = await NudgyEngine.shared.paralysisSupport(staleTasks: staleTasks)
+                penguinState.queueDialogue(support, style: .speech, autoDismiss: 10.0)
+            }
+        }
+
+        // ADHD: Overwhelm support when task count is high
+        if activeQueue.count >= 8 {
+            penguinState.queueDialogue(
+                NudgyEngine.shared.overwhelmSupport(),
+                style: .speech,
+                autoDismiss: 8.0
+            )
+        }
     }
 
     private func startBreathingAnimation() {
@@ -1130,6 +1242,39 @@ struct NudgyHomeView: View {
         activeQueue = repo.fetchActiveQueue()
     }
 
+    /// Update the mood reactor with the current environment state.
+    private func updateMoodReactor() {
+        // Determine time of day
+        let hour = Calendar.current.component(.hour, from: .now)
+        let time: AntarcticTimeOfDay
+        switch hour {
+        case 5...7:   time = .dawn
+        case 8...17:  time = .day
+        case 18...20: time = .dusk
+        default:      time = .night
+        }
+
+        // Check for overdue tasks
+        let hasOverdue = activeQueue.contains { $0.accentStatus == .overdue }
+
+        // Determine if user is actively interacting
+        let isActive = isListeningToUser || isVoiceConversation || showInlineChat || penguinState.isChatGenerating
+
+        moodReactor.update(
+            mood: RewardService.shared.environmentMood,
+            timeOfDay: time,
+            streak: RewardService.shared.currentStreak,
+            fishCount: RewardService.shared.snowflakes,
+            tasksToday: RewardService.shared.tasksCompletedToday,
+            isUserActive: isActive
+        )
+
+        // Apply mood-recommended expression only when in ambient mode
+        if penguinState.interactionMode == .ambient && !isActive {
+            penguinState.expression = moodReactor.recommendedExpression
+        }
+    }
+
     /// The active task bubble showing the current top-of-queue task.
     private var activeTaskBubble: some View {
         ActiveTaskBubble(
@@ -1138,6 +1283,7 @@ struct NudgyHomeView: View {
             queueTotal: activeQueue.count,
             onDone: {
                 guard let item = activeQueue.first else { return }
+                let previousContent = item.content
                 let repo = NudgeRepository(modelContext: modelContext)
                 repo.markDone(item)
 
@@ -1170,6 +1316,18 @@ struct NudgyHomeView: View {
 
                 withAnimation(.spring(response: 0.4)) {
                     refreshActiveQueue()
+                }
+
+                // ADHD: Transition support — help the brain switch to the next task
+                // After refreshActiveQueue(), .first is the NEXT task (done item already removed)
+                if let nextItem = activeQueue.first {
+                    Task {
+                        let msg = await NudgyEngine.shared.transitionTo(
+                            nextTask: nextItem.content,
+                            from: previousContent
+                        )
+                        penguinState.queueDialogue(msg, style: .whisper, autoDismiss: 5.0)
+                    }
                 }
 
                 NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)

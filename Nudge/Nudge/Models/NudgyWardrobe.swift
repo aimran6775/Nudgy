@@ -69,6 +69,22 @@ final class NudgyWardrobe {
     /// Date of last daily reset.
     var lastDailyResetRaw: Date?
     
+    // MARK: Streak Freeze
+    
+    /// Number of streak freezes available (earned from weekly all-clear)
+    var streakFreezes: Int
+    
+    /// Whether a freeze was used today (prevents double-use)
+    var freezeUsedToday: Bool
+    
+    /// Last date a weekly freeze was earned
+    var lastFreezeEarnedDate: Date?
+    
+    // MARK: Milestones
+    
+    /// Comma-separated milestone IDs already celebrated (e.g. "10,25,50,100")
+    var celebratedMilestonesRaw: String
+    
     // MARK: Init
     
     init() {
@@ -84,6 +100,10 @@ final class NudgyWardrobe {
         self.totalTasksCompleted = 0
         self.tasksCompletedToday = 0
         self.lastDailyResetRaw = nil
+        self.streakFreezes = 0
+        self.freezeUsedToday = false
+        self.lastFreezeEarnedDate = nil
+        self.celebratedMilestonesRaw = ""
     }
     
     // MARK: - Computed Properties
@@ -119,6 +139,21 @@ final class NudgyWardrobe {
         set {
             unlockedPropsRaw = newValue.sorted().joined(separator: ",")
         }
+    }
+    
+    /// Set of celebrated milestone counts (10, 25, 50, 100, etc.)
+    var celebratedMilestones: Set<Int> {
+        get {
+            Set(celebratedMilestonesRaw.split(separator: ",").compactMap { Int($0) })
+        }
+        set {
+            celebratedMilestonesRaw = newValue.sorted().map(String.init).joined(separator: ",")
+        }
+    }
+    
+    /// Whether a streak freeze can be used today
+    var canUseStreakFreeze: Bool {
+        streakFreezes > 0 && !freezeUsedToday
     }
     
     /// Current level based on lifetime snowflakes.

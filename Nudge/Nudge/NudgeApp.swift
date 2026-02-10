@@ -159,6 +159,9 @@ struct NudgeApp: App {
         repository.ingestFromShareExtension()
         repository.resurfaceExpiredSnoozes()
         
+        // Auto-generate tasks from active routines
+        RoutineService.generateTodaysRoutines(modelContext: container.mainContext)
+        
         // Schedule stale-item nudge notifications for items older than 3 days
         let activeItems = repository.fetchActiveQueue()
         let staleItems = activeItems.filter { $0.ageInDays >= 3 }
@@ -330,6 +333,8 @@ struct NudgeApp: App {
             NudgeItem.self,
             BrainDump.self,
             NudgyWardrobe.self,
+            Routine.self,
+            MoodEntry.self,
         ])
 
         let baseURL = FileManager.default.containerURL(

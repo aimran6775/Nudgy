@@ -68,6 +68,16 @@ struct NudgesView: View {
     @State private var expandedMicroSteps: Set<UUID> = []
     @State private var microStepsCache: [UUID: [MicroStep]] = [:]
     @State private var microStepsLoading: Set<UUID> = []
+    
+    // Completion celebration (Phase 7)
+    @State private var showCompletionParticles = false
+    
+    // Focus Timer (Phase 3)
+    @State private var focusTimerItem: NudgeItem?
+    
+    // Timeline toggle (Phase 7)
+    @State private var showTimeline = false
+    @State private var calendarService = CalendarService.shared
 
     var body: some View {
         NavigationStack {
@@ -76,6 +86,11 @@ struct NudgesView: View {
 
                 if horizonGroups.isEmpty {
                     emptyView
+                } else if showTimeline {
+                    TimelineView(
+                        calendarEvents: calendarService.todayEvents,
+                        onTapTask: { item in editingItem = item }
+                    )
                 } else {
                     listContent
                 }
@@ -84,6 +99,12 @@ struct NudgesView: View {
                 if showUndoToast {
                     undoToastView
                         .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                
+                // Phase 7: Completion celebration particles
+                if showCompletionParticles {
+                    CompletionParticles(isActive: $showCompletionParticles)
+                        .allowsHitTesting(false)
                 }
                 
                 // Floating "Pick For Me" button
@@ -112,7 +133,7 @@ struct NudgesView: View {
                         },
                         onStartFocus: {
                             dismissPickedCard()
-                            editingItem = item
+                            focusTimerItem = item
                         },
                         onDismiss: {
                             dismissPickedCard()
@@ -126,6 +147,24 @@ struct NudgesView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        withAnimation(AnimationConstants.springSmooth) {
+                            showTimeline.toggle()
+                        }
+                        HapticService.shared.actionButtonTap()
+                    } label: {
+                        Image(systemName: showTimeline ? "list.bullet" : "calendar.day.timeline.leading")
+                            .font(.system(size: 18))
+                            .foregroundStyle(DesignTokens.accentActive)
+                    }
+                    .nudgeAccessibility(
+                        label: showTimeline ? String(localized: "List view") : String(localized: "Timeline view"),
+                        hint: String(localized: "Switches between list and timeline views"),
+                        traits: .isButton
+                    )
+                }
+                
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         NotificationCenter.default.post(name: .nudgeOpenQuickAdd, object: nil)
@@ -150,6 +189,7 @@ struct NudgesView: View {
             generateAIInsight()
             syncLiveActivity()
             promptLiveActivityIfNeeded()
+            calendarService.fetchTodayEvents()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             repository?.resurfaceExpiredSnoozes()
@@ -215,6 +255,19 @@ struct NudgesView: View {
                     body: messageBody,
                     onFinished: { showMessageCompose = false }
                 )
+            }
+        }
+        .fullScreenCover(item: $focusTimerItem) { item in
+            FocusTimerView(
+                item: item,
+                isPresented: Binding(
+                    get: { focusTimerItem != nil },
+                    set: { if !$0 { focusTimerItem = nil } }
+                )
+            )
+            .onDisappear {
+                refreshData()
+                syncLiveActivity()
             }
         }
     }
@@ -300,6 +353,11 @@ struct NudgesView: View {
                     .animation(.easeOut(duration: 0.3), value: isDraftingCount)
                 }
 
+                // Phase 5: Quick capture inline field
+                InlineQuickCapture {
+                    refreshData()
+                }
+                
                 // Time-horizon sections
                 ForEach(TimeHorizon.allCases) { horizon in
                     let items = horizonGroups.items(for: horizon)
@@ -397,7 +455,8 @@ struct NudgesView: View {
                             onTap: { editingItem = item },
                             onAction: { performAction(item) },
                             onDone: { markDoneWithUndo(item) },
-                            onViewDraft: { showDraftFor = item }
+                            onViewDraft: { showDraftFor = item },
+                            onFocus: { focusTimerItem = item }
                         )
                     },
                     onSwipeLeading: { markDoneWithUndo(item) },
@@ -412,7 +471,8 @@ struct NudgesView: View {
                             onTap: { editingItem = item },
                             onDone: { markDoneWithUndo(item) },
                             onSnooze: nil,
-                            onBreakDown: nil
+                            onBreakDown: nil,
+                            onFocus: { focusTimerItem = item }
                         )
                     },
                     onSwipeLeading: { markDoneWithUndo(item) }
@@ -426,7 +486,8 @@ struct NudgesView: View {
                             onTap: { editingItem = item },
                             onDone: { markDoneWithUndo(item) },
                             onSnooze: { showSnoozeFor = item },
-                            onBreakDown: { toggleMicroSteps(for: item) }
+                            onBreakDown: { toggleMicroSteps(for: item) },
+                            onFocus: { focusTimerItem = item }
                         )
                     },
                     onSwipeLeading: { markDoneWithUndo(item) },
@@ -531,6 +592,57 @@ struct NudgesView: View {
             Spacer()
         }
     }
+    
+    // MARK: - Time-Aware Empty State Helpers
+    
+    /// The current period of day for contextual messaging.
+    private enum DayPeriod {
+        case morning   // 5am–12pm
+        case afternoon // 12pm–5pm
+        case evening   // 5pm–9pm
+        case night     // 9pm–5am
+        
+        static var current: DayPeriod {
+            let hour = Calendar.current.component(.hour, from: Date())
+            switch hour {
+            case 5..<12:  return .morning
+            case 12..<17: return .afternoon
+            case 17..<21: return .evening
+            default:      return .night
+            }
+        }
+    }
+    
+    private var emptyViewExpression: PenguinExpression {
+        switch DayPeriod.current {
+        case .morning:   return .idle
+        case .afternoon: return .thinking
+        case .evening:   return .idle
+        case .night:     return .sleeping
+        }
+    }
+    
+    private var emptyViewTitle: String {
+        switch DayPeriod.current {
+        case .morning:   return String(localized: "Good morning! 🌅")
+        case .afternoon: return String(localized: "Quiet afternoon 🌤️")
+        case .evening:   return String(localized: "Winding down 🌙")
+        case .night:     return String(localized: "Nothing on your plate 🐧")
+        }
+    }
+    
+    private var emptyViewSubtitle: String {
+        switch DayPeriod.current {
+        case .morning:
+            return String(localized: "No nudges yet — tell Nudgy what's on your mind, or add one yourself")
+        case .afternoon:
+            return String(localized: "Your list is clear. Brain dump something, or enjoy the quiet")
+        case .evening:
+            return String(localized: "Nothing pending. Prep tomorrow, or just relax — you've earned it")
+        case .night:
+            return String(localized: "All clear. Nudgy's here if you remember something")
+        }
+    }
 
     // MARK: - Actions
 
@@ -546,6 +658,13 @@ struct NudgesView: View {
         undoPreviousSortOrder = item.sortOrder
         repository?.markDone(item)
         HapticService.shared.swipeDone()
+        
+        // Phase 7: Trigger celebration particles
+        showCompletionParticles = true
+        
+        // Clean up any expanded micro-steps for this item
+        expandedMicroSteps.remove(item.id)
+        microStepsCache.removeValue(forKey: item.id)
 
         undoItem = item
         undoTimerTask?.cancel()
@@ -587,11 +706,8 @@ struct NudgesView: View {
         let candidates = horizonGroups.today
         guard candidates.count >= 2 else { return }
         
-        // Avoid picking the same item twice in a row
-        let filtered = candidates.filter { $0.id != pickedItem?.id }
-        let pool = filtered.isEmpty ? candidates : filtered
-        
-        guard let picked = pool.randomElement() else { return }
+        // Smart pick: considers deadlines, staleness, time-of-day, energy
+        guard let picked = SmartPickEngine.pickBest(from: candidates) else { return }
         pickedItem = picked
         
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
@@ -933,6 +1049,7 @@ struct ActionableNudgeRow: View {
     var onAction: (() -> Void)?
     var onDone: (() -> Void)?
     var onViewDraft: (() -> Void)?
+    var onFocus: (() -> Void)?
 
     private var accentColor: Color {
         AccentColorSystem.shared.color(for: item.accentStatus)
@@ -976,9 +1093,49 @@ struct ActionableNudgeRow: View {
                             .font(AppTheme.footnote)
                             .foregroundStyle(DesignTokens.textSecondary)
                         }
+                        
+                        // Phase 8: Stale age badge
+                        if item.isStale {
+                            HStack(spacing: 3) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 8))
+                                Text(String(localized: "\(item.ageInDays)d old"))
+                            }
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(DesignTokens.accentStale)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(DesignTokens.accentStale.opacity(0.12))
+                            )
+                        }
                     }
 
                     Spacer()
+                    
+                    // Focus timer button
+                    if let onFocus {
+                        Button {
+                            HapticService.shared.actionButtonTap()
+                            onFocus()
+                        } label: {
+                            Image(systemName: "timer")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(DesignTokens.accentActive)
+                                .frame(width: 30, height: 30)
+                                .background(
+                                    Circle()
+                                        .fill(DesignTokens.accentActive.opacity(0.1))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .nudgeAccessibility(
+                            label: String(localized: "Start focus timer"),
+                            hint: String(localized: "Opens a countdown timer for this task"),
+                            traits: .isButton
+                        )
+                    }
 
                     if let onDone {
                         Button {
@@ -995,6 +1152,23 @@ struct ActionableNudgeRow: View {
                         }
                         .buttonStyle(.plain)
                     }
+                }
+                
+                // Duration badge
+                if let label = item.durationLabel {
+                    HStack(spacing: 3) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 9))
+                        Text(label)
+                    }
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(DesignTokens.textTertiary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.05))
+                    )
                 }
 
                 // Draft preview (if Nudgy drafted something)
@@ -1059,11 +1233,11 @@ struct ActionableNudgeRow: View {
                     RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
                         .fill(DesignTokens.cardSurface.opacity(0.4))
 
-                    // Accent glow
+                    // Accent glow (amber for stale items)
                     RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
                         .fill(
                             LinearGradient(
-                                colors: [DesignTokens.accentActive.opacity(0.06), .clear],
+                                colors: [accentColor.opacity(item.isStale ? 0.10 : 0.06), .clear],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -1073,7 +1247,7 @@ struct ActionableNudgeRow: View {
                         .strokeBorder(
                             LinearGradient(
                                 colors: [
-                                    DesignTokens.accentActive.opacity(0.25),
+                                    accentColor.opacity(0.25),
                                     Color.white.opacity(0.04)
                                 ],
                                 startPoint: .topLeading,

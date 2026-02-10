@@ -391,6 +391,7 @@ struct InboxItemRow: View {
     var onDone: (() -> Void)?
     var onSnooze: (() -> Void)?
     var onBreakDown: (() -> Void)?
+    var onFocus: (() -> Void)?
     
     private var accentColor: Color {
         AccentColorSystem.shared.color(for: item.accentStatus)
@@ -432,8 +433,19 @@ struct InboxItemRow: View {
                         }
                         
                         if item.isStale {
-                            Text(String(localized: "\(item.ageInDays)d"))
-                                .foregroundStyle(DesignTokens.accentStale)
+                            HStack(spacing: 3) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 8))
+                                Text(String(localized: "\(item.ageInDays)d old"))
+                            }
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(DesignTokens.accentStale)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(DesignTokens.accentStale.opacity(0.12))
+                            )
                         }
                     }
                     .font(AppTheme.footnote)
@@ -444,6 +456,23 @@ struct InboxItemRow: View {
                 
                 // Quick action buttons
                 HStack(spacing: DesignTokens.spacingSM) {
+                    if let onFocus, item.status != .done {
+                        Button {
+                            HapticService.shared.actionButtonTap()
+                            onFocus()
+                        } label: {
+                            Image(systemName: "timer")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(DesignTokens.accentActive)
+                                .frame(width: 30, height: 30)
+                                .background(
+                                    Circle()
+                                        .fill(DesignTokens.accentActive.opacity(0.1))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    
                     if let onBreakDown, AIService.shared.isAvailable {
                         Button {
                             HapticService.shared.prepare()
@@ -487,11 +516,11 @@ struct InboxItemRow: View {
                     RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
                         .fill(DesignTokens.cardSurface.opacity(0.4))
                     
-                    // Accent edge hint
+                    // Accent edge hint (amber for stale items)
                     RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
                         .fill(
                             LinearGradient(
-                                colors: [accentColor.opacity(0.04), .clear],
+                                colors: [accentColor.opacity(item.isStale ? 0.08 : 0.04), .clear],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
