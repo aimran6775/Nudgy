@@ -170,8 +170,10 @@ struct RoutineListView: View {
             VStack(alignment: .leading, spacing: DesignTokens.spacingMD) {
                 // Top row: emoji + name + toggle
                 HStack(spacing: DesignTokens.spacingMD) {
-                    Text(routine.emoji)
-                        .font(.system(size: 28))
+                    Image(systemName: TaskIconResolver.resolveSymbol(for: routine.emoji))
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(Color(hex: routine.colorHex ?? "007AFF"))
+                        .frame(width: 36, height: 36)
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text(routine.name)
@@ -208,8 +210,7 @@ struct RoutineListView: View {
                 if !steps.isEmpty {
                     HStack(spacing: DesignTokens.spacingSM) {
                         ForEach(steps.prefix(5)) { step in
-                            Text(step.emoji ?? "•")
-                                .font(.system(size: 14))
+                            StepIconView(emoji: step.emoji ?? "circle.fill", size: 13)
                         }
                         
                         if steps.count > 5 {
@@ -238,36 +239,16 @@ struct RoutineListView: View {
             }
             .padding(DesignTokens.spacingMD)
             .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(.ultraThinMaterial)
-                    
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.4))
-                    
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(
-                            LinearGradient(
-                                colors: [routine.color.opacity(0.06), .clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
+                    .fill(
+                        LinearGradient(
+                            colors: [routine.color.opacity(0.07), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                    
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    routine.color.opacity(0.2),
-                                    Color.white.opacity(0.04)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.5
-                        )
-                }
+                    )
             }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
         .buttonStyle(.plain)
         .contextMenu {

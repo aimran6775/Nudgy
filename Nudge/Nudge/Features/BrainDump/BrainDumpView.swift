@@ -92,7 +92,7 @@ struct BrainDumpView: View {
             .padding(DesignTokens.spacingLG)
             .nudgeAccessibility(label: String(localized: "Close"), traits: .isButton)
             .confirmationDialog(
-                String(localized: "Discard brain dump?"),
+                String(localized: "Discard brain unload?"),
                 isPresented: $showCloseConfirmation,
                 titleVisibility: .visible
             ) {
@@ -127,7 +127,7 @@ struct BrainDumpView: View {
                 )
             }
             
-            Text(String(localized: "Brain Dump"))
+            Text(String(localized: "Brain Unload"))
                 .font(AppTheme.displayFont)
                 .foregroundStyle(DesignTokens.textPrimary)
             
@@ -163,7 +163,7 @@ struct BrainDumpView: View {
             // Free tier indicator
             if !settings.isPro {
                 let remaining = FreeTierLimits.maxDailyBrainDumps - settings.dailyDumpsUsed
-                Text(String(localized: "\(remaining) dumps left today"))
+                Text(String(localized: "\(remaining) unloads left today"))
                     .font(AppTheme.caption)
                     .foregroundStyle(remaining > 0 ? DesignTokens.textTertiary : DesignTokens.accentOverdue)
             }
@@ -208,10 +208,7 @@ struct BrainDumpView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxHeight: 200)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.5))
-                )
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
                 .padding(.horizontal, DesignTokens.spacingXL)
             }
             
@@ -261,7 +258,7 @@ struct BrainDumpView: View {
                 .focused($textFieldFocused)
                 .overlay(alignment: .topLeading) {
                     if typedText.isEmpty {
-                        Text(String(localized: "Dump everything on your mind...\ne.g. \"Call dentist tomorrow, pay rent by the 5th, text Sarah about dinner tonight, maybe get car washed\""))
+                        Text(String(localized: "Unload everything on your mind...\ne.g. \"Call dentist tomorrow, pay rent by the 5th, text Sarah about dinner tonight, maybe get car washed\""))
                             .font(AppTheme.body)
                             .foregroundStyle(DesignTokens.textTertiary)
                             .padding(DesignTokens.spacingMD)
@@ -346,7 +343,7 @@ struct BrainDumpView: View {
         .nudgeAccessibility(
             label: viewModel.isRecording
                 ? String(localized: "Stop recording")
-                : String(localized: "Start brain dump recording"),
+                : String(localized: "Start brain unload recording"),
             traits: .isButton
         )
     }
@@ -361,7 +358,7 @@ struct BrainDumpView: View {
                 accentColorOverride: DesignTokens.accentActive
             )
         }
-        .nudgeAnnouncement(String(localized: "Processing your brain dump"))
+        .nudgeAnnouncement(String(localized: "Processing your brain unload"))
     }
     
     // MARK: - Results State
@@ -434,8 +431,7 @@ struct BrainDumpView: View {
                 VStack(alignment: .leading, spacing: DesignTokens.spacingXS) {
                     HStack {
                         if let emoji = task.emoji {
-                            Text(emoji)
-                                .font(AppTheme.emoji(size: 18))
+                            StepIconView(emoji: emoji, size: 16)
                         }
                         
                         Text(task.content)

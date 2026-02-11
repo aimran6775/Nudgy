@@ -266,6 +266,14 @@ final class NudgeRepository {
         save()
     }
     
+    /// Undo a drop action — restore item to active
+    func undoDrop(_ item: NudgeItem, restoreSortOrder: Int) {
+        item.status = .active
+        item.sortOrder = restoreSortOrder
+        item.updatedAt = Date()
+        save()
+    }
+    
     /// Resurface a snoozed item — bring it back to active
     func resurfaceItem(_ item: NudgeItem) {
         item.resurface()
@@ -297,6 +305,15 @@ final class NudgeRepository {
     /// Total completed today
     func completedTodayCount() -> Int {
         fetchCompletedToday().count
+    }
+    
+    /// Total lifetime completed count
+    func completedCount() -> Int {
+        let predicate = #Predicate<NudgeItem> {
+            $0.statusRaw == "done"
+        }
+        let descriptor = FetchDescriptor<NudgeItem>(predicate: predicate)
+        return (try? modelContext.fetchCount(descriptor)) ?? 0
     }
     
     // MARK: - Share Extension Ingest

@@ -68,9 +68,9 @@ struct TimelineView: View {
                     // Hour grid lines
                     hourGrid
                     
-                    // Task blocks
-                    ForEach(allEntries) { entry in
-                        timelineBlock(for: entry)
+                    // Task blocks (column-aware — no overlapping)
+                    ForEach(columnLayouts, id: \.entry.id) { layout in
+                        timelineBlock(for: layout.entry, column: layout.column, totalColumns: layout.totalColumns)
                     }
                     
                     // "Now" indicator
@@ -101,6 +101,55 @@ struct TimelineView: View {
     
     private var allEntries: [TimelineEntry] {
         (entries + calendarEvents).sorted { $0.startTime < $1.startTime }
+    }
+    
+    // MARK: - Column Layout (prevents overlapping events)
+    
+    /// Assigns each entry a column index and total column count for its group
+    /// so concurrent events sit side-by-side instead of overlapping.
+    private struct ColumnLayout {
+        let entry: TimelineEntry
+        let column: Int
+        let totalColumns: Int
+    }
+    
+    private var columnLayouts: [ColumnLayout] {
+        let sorted = allEntries
+        guard !sorted.isEmpty else { return [] }
+        
+        // Group overlapping entries into clusters
+        var layouts: [ColumnLayout] = []
+        var activeColumns: [(entry: TimelineEntry, endTime: Date, column: Int)] = []
+        
+        for entry in sorted {
+            // Remove entries that have ended before this one starts
+            activeColumns.removeAll { $0.endTime <= entry.startTime }
+            
+            // Find the first available column
+            let usedColumns = Set(activeColumns.map(\.column))
+            var col = 0
+            while usedColumns.contains(col) {
+                col += 1
+            }
+            
+            activeColumns.append((entry: entry, endTime: entry.endTime, column: col))
+            layouts.append(ColumnLayout(entry: entry, column: col, totalColumns: 0))
+        }
+        
+        // Second pass: calculate total columns for each cluster
+        return layouts.map { layout in
+            // Find all entries that overlap with this one
+            let overlapping = layouts.filter { other in
+                other.entry.startTime < layout.entry.endTime &&
+                other.entry.endTime > layout.entry.startTime
+            }
+            let maxCol = overlapping.map(\.column).max() ?? 0
+            return ColumnLayout(
+                entry: layout.entry,
+                column: layout.column,
+                totalColumns: maxCol + 1
+            )
+        }
     }
     
     // MARK: - Hour Grid
@@ -150,13 +199,22 @@ struct TimelineView: View {
     
     // MARK: - Timeline Block
     
-    private func timelineBlock(for entry: TimelineEntry) -> some View {
+    private func timelineBlock(for entry: TimelineEntry, column: Int = 0, totalColumns: Int = 1) -> some View {
         let calendar = Calendar.current
         let hour = calendar.component(.hour, from: entry.startTime)
         let minute = calendar.component(.minute, from: entry.startTime)
         let totalMinutes = (hour - startHour) * 60 + minute
         let yOffset = CGFloat(totalMinutes) / 60.0 * hourHeight
         let blockHeight = max(CGFloat(entry.durationMinutes) / 60.0 * hourHeight, 36)
+        
+        // Column-aware horizontal layout
+        let labelWidth: CGFloat = 60
+        let trailingPad: CGFloat = DesignTokens.spacingLG
+        let availableWidth = UIScreen.main.bounds.width - labelWidth - trailingPad - (DesignTokens.spacingLG * 2)
+        let columnWidth = availableWidth / CGFloat(totalColumns)
+        let columnGap: CGFloat = totalColumns > 1 ? 2 : 0
+        let xOffset = labelWidth + CGFloat(column) * columnWidth
+        let blockWidth = columnWidth - columnGap
         
         return Button {
             if let item = entry.nudgeItem {
@@ -173,8 +231,7 @@ struct TimelineView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         if let emoji = entry.emoji {
-                            Text(emoji)
-                                .font(.system(size: 13))
+                            StepIconView(emoji: emoji, size: 12)
                         }
                         
                         Text(entry.title)
@@ -216,8 +273,8 @@ struct TimelineView: View {
             )
         }
         .buttonStyle(.plain)
-        .offset(x: 60, y: yOffset)
-        .padding(.trailing, 60 + DesignTokens.spacingLG)
+        .frame(width: blockWidth)
+        .offset(x: xOffset, y: yOffset)
     }
     
     // MARK: - Data Loading

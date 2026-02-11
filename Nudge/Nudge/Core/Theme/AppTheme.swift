@@ -36,6 +36,9 @@ enum AppTheme {
     /// Secondary text — timestamps, metadata, hints
     static let caption: Font = .system(.caption, design: .default, weight: .regular)
     
+    /// Bold caption — counts, badges, emphasis in small text
+    static let captionBold: Font = .system(.caption, design: .default, weight: .bold)
+    
     /// Small labels — queue position, counts
     static let footnote: Font = .system(.footnote, design: .default, weight: .regular)
     

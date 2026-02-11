@@ -10,10 +10,10 @@ import TipKit
 
 // MARK: - Brain Dump Tip
 
-/// Shows on empty One-Thing View: "Tap the mic to brain dump"
+/// Shows on empty One-Thing View: "Tap the mic to unload your brain"
 struct BrainDumpTip: Tip {
     
-    /// Event: user has done at least one brain dump
+    /// Event: user has done at least one brain unload
     static let brainDumpCompleted = Event(id: "brainDumpCompleted")
     
     var title: Text {
@@ -21,7 +21,7 @@ struct BrainDumpTip: Tip {
     }
     
     var message: Text? {
-        Text("Tap the mic button to brain dump everything on your mind. AI splits it into tasks.")
+        Text("Tap the mic button to unload everything on your mind. AI splits it into tasks.")
     }
     
     var image: Image? {

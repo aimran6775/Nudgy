@@ -219,7 +219,7 @@ struct SpeechBubbleView: View {
     ZStack {
         Color.black.ignoresSafeArea()
         SpeechBubbleView(
-            dialogue: PenguinDialogue("Hey! Tap me to brain dump 🧠", style: .speech)
+            dialogue: PenguinDialogue("Hey! Tap me to unload your brain 🧠", style: .speech)
         )
     }
 }

@@ -71,9 +71,46 @@ struct PenguinMascot: View {
     
     var body: some View {
         ZStack {
+            // Ground contact shadow — elliptical shadow under the feet
+            // (Pixar always grounds characters with a soft contact shadow)
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.black.opacity(0.22),
+                            Color.black.opacity(0.08),
+                            Color.clear
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: p * 0.21
+                    )
+                )
+                .frame(width: p * 0.40, height: p * 0.06)
+                .offset(y: p * 0.54)
+            
             penguinFeet
             penguinBody
             penguinBelly
+            
+            // Ambient occlusion — soft shadow under chin where head meets body
+            // (creates depth at the junction — Pixar lighting principle)
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.black.opacity(0.14),
+                            Color.black.opacity(0.05),
+                            Color.clear
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: p * 0.17
+                    )
+                )
+                .frame(width: p * 0.36, height: p * 0.07)
+                .offset(y: p * 0.005)
+            
             penguinWings
             penguinScarf
             penguinHead
@@ -103,8 +140,9 @@ struct PenguinMascot: View {
     // │  Offsets are relative to frame center (0,0).              │
     // └────────────────────────────────────────────────────────────┘
     
-    // MARK: - Body (egg/pear shape — bezier)
-    //  Python: body_w = psize * 0.44, body_h = psize * 0.48, offset +8%
+    // MARK: - Body (plump snowball shape — chubby bezier)
+    //  Chubby: body_w = 0.88p, body_h = 0.98p, offset +7%
+    //  Wider than original pear to create huggable plushy silhouette.
     
     private var penguinBody: some View {
         ZStack {
@@ -127,24 +165,61 @@ struct PenguinMascot: View {
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color.white.opacity(0.04),
+                            Color.white.opacity(0.06),
                             Color.clear,
-                            Color.black.opacity(0.08)
+                            Color.black.opacity(0.10)
                         ],
-                        center: .init(x: 0.4, y: 0.35),
+                        center: .init(x: 0.38, y: 0.32),
                         startRadius: 0,
-                        endRadius: p * 0.5
+                        endRadius: p * 0.48
                     )
                 )
+            
+            // Pixar rim light — subtle edge highlight on the left side
+            // Separates character from dark backgrounds (like Sully's rim)
+            PenguinBodyShape()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: "6688BB").opacity(0.35),
+                            Color(hex: "6688BB").opacity(0.12),
+                            Color.clear,
+                            Color.clear,
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: p * 0.008
+                )
+            
+            // Feather texture hint — barely visible curved lines
+            // suggesting plumage direction (Pixar surface detail)
+            Path { path in
+                // Left shoulder feather arc
+                path.move(to: CGPoint(x: p * 0.88 * 0.16, y: p * 0.98 * 0.32))
+                path.addCurve(
+                    to: CGPoint(x: p * 0.88 * 0.22, y: p * 0.98 * 0.52),
+                    control1: CGPoint(x: p * 0.88 * 0.10, y: p * 0.98 * 0.39),
+                    control2: CGPoint(x: p * 0.88 * 0.16, y: p * 0.98 * 0.47)
+                )
+                // Right shoulder feather arc
+                path.move(to: CGPoint(x: p * 0.88 * 0.84, y: p * 0.98 * 0.32))
+                path.addCurve(
+                    to: CGPoint(x: p * 0.88 * 0.78, y: p * 0.98 * 0.52),
+                    control1: CGPoint(x: p * 0.88 * 0.90, y: p * 0.98 * 0.39),
+                    control2: CGPoint(x: p * 0.88 * 0.84, y: p * 0.98 * 0.47)
+                )
+            }
+            .stroke(Color.white.opacity(0.04), lineWidth: p * 0.004)
         }
-        .frame(width: p * 0.88, height: p * 0.96)
-        .offset(y: p * 0.08)
+        .frame(width: p * 0.88, height: p * 0.98)
+        .offset(y: p * 0.07)
         // Subtle drop shadow to ground the penguin
         .shadow(color: Color.black.opacity(0.25), radius: p * 0.04, y: p * 0.03)
     }
     
-    // MARK: - Belly (soft oval with vertical gradient)
-    //  Python: belly_w = 0.30, belly_h = 0.38, offset +14%
+    // MARK: - Belly (fills 73% of body width — plushy proportions)
+    //  Chubby: belly_w = 0.64p, belly_h = 0.80p, offset +13%
     
     private var penguinBelly: some View {
         ZStack {
@@ -157,53 +232,91 @@ struct PenguinMascot: View {
                     )
                 )
             
-            // Inner warmth glow
+            // Subsurface scattering — warm pinkish glow from within
+            // (like light passing through translucent feathers — Pixar SSS)
             Ellipse()
                 .fill(
                     RadialGradient(
-                        colors: [Color.white.opacity(0.12), Color.clear],
-                        center: .init(x: 0.45, y: 0.4),
+                        colors: [
+                            PenguinColors.blush.opacity(0.06),
+                            Color.white.opacity(0.08),
+                            Color.clear
+                        ],
+                        center: .init(x: 0.5, y: 0.45),
                         startRadius: 0,
                         endRadius: p * 0.25
                     )
                 )
+            
+            // Specular highlight — top-left sheen (key light reflection)
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(0.22),
+                            Color.white.opacity(0.06),
+                            Color.clear
+                        ],
+                        center: .init(x: 0.35, y: 0.28),
+                        startRadius: 0,
+                        endRadius: p * 0.14
+                    )
+                )
         }
-        .frame(width: p * 0.60, height: p * 0.76)
-        .offset(y: p * 0.14)
+        .frame(width: p * 0.64, height: p * 0.80)
+        .offset(y: p * 0.13)
     }
     
-    // MARK: - Head (large round — chibi proportions)
-    //  Python: head_r = 0.28, rx = head_r * 1.08, head_cy = -22%
-    //  Total: w = 0.56 * 1.08 = ~0.605, h = 0.56
+    // MARK: - Head (same size, sunk into chubby body)
+    //  Size unchanged: 0.605p × 0.56p. Offset -19% (was -22%)
+    //  Head sinks 3% deeper to merge with wider body — no neck gap.
     
     private var penguinHead: some View {
-        Ellipse()
-            .fill(
-                RadialGradient(
-                    colors: [PenguinColors.plumageHighlight, PenguinColors.plumageDark],
-                    center: .init(x: 0.35, y: 0.3),
-                    startRadius: 0,
-                    endRadius: p * 0.34
+        ZStack {
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [PenguinColors.plumageHighlight, PenguinColors.plumageDark],
+                        center: .init(x: 0.35, y: 0.3),
+                        startRadius: 0,
+                        endRadius: p * 0.34
+                    )
                 )
-            )
-            .frame(width: p * 0.605, height: p * 0.56)
-            .rotationEffect(.degrees(headTilt))
-            .offset(y: -p * 0.22)
+            
+            // Rim light on head — matches body rim for consistent lighting
+            Ellipse()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: "6688BB").opacity(0.30),
+                            Color(hex: "6688BB").opacity(0.08),
+                            Color.clear,
+                            Color.clear,
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: p * 0.006
+                )
+        }
+        .frame(width: p * 0.605, height: p * 0.56)
+        .rotationEffect(.degrees(headTilt))
+        .offset(y: -p * 0.19)
     }
     
-    // MARK: - Face Patch (white area for eyes/beak)
-    //  Python: face_w = 0.20, face_h = 0.17, face_cy = head_cy + 4%
+    // MARK: - Face Patch (white area — follows head offset)
+    //  Same size, offset cascades with head: -15% (was -18%)
     
     private var penguinFacePatch: some View {
         Ellipse()
             .fill(Color.white)
             .frame(width: p * 0.40, height: p * 0.34)
             .rotationEffect(.degrees(headTilt))
-            .offset(y: -p * 0.18)
+            .offset(y: -p * 0.15)
     }
     
-    // MARK: - Eyes
-    //  Python: eye_y = head_cy + 1%, eye_spacing = 9.5%
+    // MARK: - Eyes (follow head offset)
+    //  Same size, offset cascades with head: -18% (was -21%)
     
     private var penguinEyes: some View {
         HStack(spacing: p * 0.095) {
@@ -211,7 +324,7 @@ struct PenguinMascot: View {
             eyeView(isRight: true)
         }
         .rotationEffect(.degrees(headTilt))
-        .offset(y: -p * 0.21)
+        .offset(y: -p * 0.18)
     }
     
     @ViewBuilder
@@ -301,8 +414,8 @@ struct PenguinMascot: View {
         }
     }
     
-    // MARK: - Beak (rounded triangle, accent blue)
-    //  Python: beak_w = 0.042, beak_h = 0.035, beak_cy = head_cy + 9.5%
+    // MARK: - Beak (follows head offset)
+    //  Same size, offset cascades with head: -9.5% (was -12.5%)
     
     private var penguinBeak: some View {
         BeakShape()
@@ -315,7 +428,7 @@ struct PenguinMascot: View {
             )
             .frame(width: p * 0.084, height: p * 0.07)
             .rotationEffect(.degrees(headTilt))
-            .offset(y: -p * 0.125)
+            .offset(y: -p * 0.095)
     }
     
     // MARK: - Cheek Blush
@@ -329,33 +442,42 @@ struct PenguinMascot: View {
         }
     }
     
-    //  Python: blush_y = head_cy + 4%, spacing = 14.5%, r = 3.5%
+    //  Larger, softer cheek blush — Pixar-style warmth.
+    //  Radius increased 50% for that soft, glowing warmth.
     private var penguinCheekBlush: some View {
-        HStack(spacing: p * 0.22) {
+        HStack(spacing: p * 0.20) {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [PenguinColors.blush.opacity(blushIntensity), PenguinColors.blush.opacity(0)],
+                        colors: [
+                            PenguinColors.blush.opacity(blushIntensity),
+                            PenguinColors.blush.opacity(blushIntensity * 0.4),
+                            PenguinColors.blush.opacity(0)
+                        ],
                         center: .center,
                         startRadius: 0,
-                        endRadius: p * 0.035
+                        endRadius: p * 0.055
                     )
                 )
-                .frame(width: p * 0.07, height: p * 0.07)
+                .frame(width: p * 0.10, height: p * 0.10)
             
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [PenguinColors.blush.opacity(blushIntensity), PenguinColors.blush.opacity(0)],
+                        colors: [
+                            PenguinColors.blush.opacity(blushIntensity),
+                            PenguinColors.blush.opacity(blushIntensity * 0.4),
+                            PenguinColors.blush.opacity(0)
+                        ],
                         center: .center,
                         startRadius: 0,
-                        endRadius: p * 0.035
+                        endRadius: p * 0.055
                     )
                 )
-                .frame(width: p * 0.07, height: p * 0.07)
+                .frame(width: p * 0.10, height: p * 0.10)
         }
         .rotationEffect(.degrees(headTilt))
-        .offset(y: -p * 0.18)
+        .offset(y: -p * 0.14)
     }
     
     // MARK: - Eyebrows (expression-specific)
@@ -374,7 +496,7 @@ struct PenguinMascot: View {
                         .frame(width: p * 0.04, height: p * 0.008)
                         .rotationEffect(.degrees(8))
                 }
-                .offset(y: -p * 0.29)
+                .offset(y: -p * 0.26)
                 
             case .listening:
                 HStack(spacing: p * 0.095) {
@@ -387,7 +509,7 @@ struct PenguinMascot: View {
                         .frame(width: p * 0.035, height: p * 0.007)
                         .rotationEffect(.degrees(5))
                 }
-                .offset(y: -p * 0.29)
+                .offset(y: -p * 0.26)
                 
             case .nudging:
                 HStack(spacing: p * 0.095) {
@@ -400,7 +522,7 @@ struct PenguinMascot: View {
                         .frame(width: p * 0.038, height: p * 0.008)
                         .rotationEffect(.degrees(-8))
                 }
-                .offset(y: -p * 0.29)
+                .offset(y: -p * 0.26)
                 
             default:
                 EmptyView()
@@ -409,11 +531,12 @@ struct PenguinMascot: View {
     }
     
     // MARK: - Wings (bezier flippers)
-    //  Python: wing_w = 0.10, wing_h = 0.22, wing_y = +2%, spacing = 0.74
+    //  Slightly oversized for character appeal — Pixar style.
+    //  Sway independently with overlapping action.
     
     private var penguinWings: some View {
         HStack(spacing: p * 0.54) {
-            // Left wing
+            // Left wing — wider spacing to sit on chubby shoulders
             WingShape()
                 .fill(
                     LinearGradient(
@@ -422,8 +545,8 @@ struct PenguinMascot: View {
                         endPoint: .trailing
                     )
                 )
-                .frame(width: p * 0.10, height: p * 0.22)
-                .rotationEffect(.degrees(leftWingAngle + (reduceMotion ? 0 : Double(flipperSway))))
+                .frame(width: p * 0.14, height: p * 0.28)
+                .rotationEffect(.degrees(leftWingAngle + (reduceMotion ? 0 : Double(flipperSway))), anchor: .top)
             
             // Right wing
             WingShape()
@@ -434,16 +557,16 @@ struct PenguinMascot: View {
                         endPoint: .trailing
                     )
                 )
-                .frame(width: p * 0.10, height: p * 0.22)
+                .frame(width: p * 0.14, height: p * 0.28)
                 .scaleEffect(x: -1, y: 1)
-                .rotationEffect(.degrees(rightWingAngle - (reduceMotion ? 0 : Double(flipperSway))))
+                .rotationEffect(.degrees(rightWingAngle - (reduceMotion ? 0 : Double(flipperSway))), anchor: .top)
         }
-        .offset(y: p * 0.02)
+        .offset(y: p * 0.01)
     }
     
-    // MARK: - Scarf (accent blue, wraps neck area)
-    //  Python: scarf_w = 0.30, scarf_h = 0.035, scarf_y = -6.5%
-    //  Thin elegant band, not a giant bib.
+    // MARK: - Scarf (wraps chubby neck junction)
+    //  Chubby: scarf_w = 0.64p, scarf_h = 0.11p, y -3.5%
+    //  Wider and lower to wrap the head-body junction properly.
     
     private var penguinScarf: some View {
         ScarfShape()
@@ -458,26 +581,28 @@ struct PenguinMascot: View {
                 ScarfShape()
                     .stroke(Color(hex: "3399FF").opacity(0.5), lineWidth: p * 0.003)
             )
-            .frame(width: p * 0.60, height: p * 0.10)
-            .offset(x: reduceMotion ? 0 : scarfSway * 0.5, y: -p * 0.065)
+            .frame(width: p * 0.64, height: p * 0.11)
+            .offset(x: reduceMotion ? 0 : scarfSway * 0.5, y: -p * 0.035)
     }
     
-    // MARK: - Feet
-    //  Python: foot_w = 0.065, foot_h = 0.025, spacing = 0.08, at body_bottom = +50%
+    // MARK: - Feet (wider stance for chubby body)
+    //  Chubby: spacing 0.06p, size 0.18p, splayed ±12°.
+    //  Wider stance grounds the heavier body — waddly stability.
     
     private var penguinFeet: some View {
-        HStack(spacing: p * 0.10) {
-            Capsule()
-                .fill(accentColor.opacity(0.7))
-                .frame(width: p * 0.065, height: p * 0.025)
-                .rotationEffect(.degrees(-8))
+        HStack(spacing: p * 0.06) {
+            // Left foot — wider stance grounds heavier chubby body
+            WebFootView(size: p * 0.18, color: Color(hex: "FF8C42"))
+                .rotationEffect(.degrees(-12))
+                .offset(x: -p * 0.025)
             
-            Capsule()
-                .fill(accentColor.opacity(0.7))
-                .frame(width: p * 0.065, height: p * 0.025)
-                .rotationEffect(.degrees(8))
+            // Right foot — toes point slightly right
+            WebFootView(size: p * 0.18, color: Color(hex: "FF8C42"))
+                .scaleEffect(x: -1, y: 1)  // Mirror
+                .rotationEffect(.degrees(12))
+                .offset(x: p * 0.025)
         }
-        .offset(y: p * 0.50)
+        .offset(y: p * 0.48)
     }
     
     // MARK: - Expression-Driven Properties
@@ -532,15 +657,15 @@ struct PenguinMascot: View {
                         .opacity(dotPhase == i ? 1.0 : 0.25)
                 }
             }
-            .offset(x: p * 0.22, y: -p * 0.38)
+            .offset(x: p * 0.22, y: -p * 0.35)
             
         case .celebrating:
             // Confetti sparkles
             let sparkles: [(CGFloat, CGFloat, Color)] = [
-                (-p * 0.28, -p * 0.42, accentColor),
-                (p * 0.24, -p * 0.38, DesignTokens.accentComplete),
-                (-p * 0.08, -p * 0.50, DesignTokens.accentStale),
-                (p * 0.32, -p * 0.28, accentColor),
+                (-p * 0.28, -p * 0.39, accentColor),
+                (p * 0.24, -p * 0.35, DesignTokens.accentComplete),
+                (-p * 0.08, -p * 0.47, DesignTokens.accentStale),
+                (p * 0.32, -p * 0.25, accentColor),
             ]
             ForEach(0..<sparkles.count, id: \.self) { i in
                 Image(systemName: "sparkle")
@@ -559,7 +684,7 @@ struct PenguinMascot: View {
                     .opacity(zzzOpacity[i])
                     .offset(
                         x: p * (0.22 + CGFloat(i) * 0.04),
-                        y: -p * (0.30 + CGFloat(i) * 0.08) + zzzOffset[i]
+                        y: -p * (0.27 + CGFloat(i) * 0.08) + zzzOffset[i]
                     )
             }
             
@@ -801,7 +926,7 @@ struct PenguinMascot: View {
         switch expression {
         case .idle:        return String(localized: "Nudgy the penguin, relaxing")
         case .happy:       return String(localized: "Nudgy celebrating your progress")
-        case .thinking:    return String(localized: "Nudgy thinking about your brain dump")
+        case .thinking:    return String(localized: "Nudgy thinking about what you said")
         case .sleeping:    return String(localized: "Nudgy resting, all tasks done")
         case .celebrating: return String(localized: "Nudgy celebrating, all tasks complete!")
         case .thumbsUp:    return String(localized: "Nudgy giving a thumbs up, item saved")
@@ -817,7 +942,9 @@ struct PenguinMascot: View {
 
 // MARK: - Custom Shapes (Bezier Paths — matches icon generator)
 
-/// Egg/pear body shape — wider at bottom, smooth taper to top
+/// Plump snowball body — chubby plushy proportions, rounder than the pear.
+/// Widest at ~52% height with pillowy uniform curvature throughout.
+/// Inspired by Pixar character appeal: round = friendly = huggable.
 struct PenguinBodyShape: Shape {
     func path(in rect: CGRect) -> Path {
         let w = rect.width
@@ -826,29 +953,29 @@ struct PenguinBodyShape: Shape {
         
         return Path { p in
             p.move(to: CGPoint(x: cx, y: 0))
-            // Right side — bulge outward
+            // Right side — pillowy outward bulge
             p.addCurve(
-                to: CGPoint(x: cx + w * 0.48, y: h * 0.55),
-                control1: CGPoint(x: cx + w * 0.30, y: 0),
-                control2: CGPoint(x: cx + w * 0.55, y: h * 0.25)
+                to: CGPoint(x: cx + w * 0.49, y: h * 0.52),
+                control1: CGPoint(x: cx + w * 0.32, y: 0),
+                control2: CGPoint(x: cx + w * 0.52, y: h * 0.22)
             )
-            // Right bottom curve
+            // Right bottom — full round sweep to base
             p.addCurve(
-                to: CGPoint(x: cx, y: h * 0.95),
-                control1: CGPoint(x: cx + w * 0.42, y: h * 0.82),
-                control2: CGPoint(x: cx + w * 0.20, y: h)
+                to: CGPoint(x: cx, y: h * 0.96),
+                control1: CGPoint(x: cx + w * 0.48, y: h * 0.80),
+                control2: CGPoint(x: cx + w * 0.22, y: h * 0.99)
             )
-            // Left bottom curve (mirror)
+            // Left bottom — mirror
             p.addCurve(
-                to: CGPoint(x: cx - w * 0.48, y: h * 0.55),
-                control1: CGPoint(x: cx - w * 0.20, y: h),
-                control2: CGPoint(x: cx - w * 0.42, y: h * 0.82)
+                to: CGPoint(x: cx - w * 0.49, y: h * 0.52),
+                control1: CGPoint(x: cx - w * 0.22, y: h * 0.99),
+                control2: CGPoint(x: cx - w * 0.48, y: h * 0.80)
             )
             // Left side — taper back to top
             p.addCurve(
                 to: CGPoint(x: cx, y: 0),
-                control1: CGPoint(x: cx - w * 0.55, y: h * 0.25),
-                control2: CGPoint(x: cx - w * 0.30, y: 0)
+                control1: CGPoint(x: cx - w * 0.52, y: h * 0.22),
+                control2: CGPoint(x: cx - w * 0.32, y: 0)
             )
             p.closeSubpath()
         }
@@ -1014,6 +1141,145 @@ struct Triangle: Shape {
             p.move(to: CGPoint(x: rect.midX, y: rect.maxY))
             p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
             p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            p.closeSubpath()
+        }
+    }
+}
+
+// MARK: - Webbed Penguin Foot
+
+/// A cute webbed penguin foot with 3 rounded toes splayed out.
+/// Drawn with bezier curves for a soft, cartoon look.
+struct WebFootView: View {
+    var size: CGFloat = 24
+    var color: Color = Color(hex: "FF8C42")  // Penguin orange
+    
+    var body: some View {
+        ZStack {
+            // Foot body with webbing
+            WebFootShape()
+                .fill(
+                    LinearGradient(
+                        colors: [color, color.opacity(0.75)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            
+            // 3D highlight (top surface catches light)
+            WebFootShape()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(0.18),
+                            Color.clear
+                        ],
+                        center: UnitPoint(x: 0.4, y: 0.3),
+                        startRadius: 0,
+                        endRadius: size * 0.4
+                    )
+                )
+            
+            // Subtle outline
+            WebFootShape()
+                .stroke(color.opacity(0.4), lineWidth: 0.5)
+            
+            // Toe separation lines (webbing detail)
+            Path { p in
+                // Left web line
+                p.move(to: CGPoint(x: size * 0.42, y: size * 0.22))
+                p.addCurve(
+                    to: CGPoint(x: size * 0.22, y: size * 0.72),
+                    control1: CGPoint(x: size * 0.34, y: size * 0.42),
+                    control2: CGPoint(x: size * 0.24, y: size * 0.58)
+                )
+                // Right web line
+                p.move(to: CGPoint(x: size * 0.58, y: size * 0.22))
+                p.addCurve(
+                    to: CGPoint(x: size * 0.78, y: size * 0.72),
+                    control1: CGPoint(x: size * 0.66, y: size * 0.42),
+                    control2: CGPoint(x: size * 0.76, y: size * 0.58)
+                )
+            }
+            .stroke(color.opacity(0.25), lineWidth: 0.8)
+        }
+        .frame(width: size, height: size * 0.8)
+    }
+}
+
+/// Webbed foot outline — 3 rounded toes connected by webbing.
+struct WebFootShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        
+        return Path { p in
+            // Start at ankle (top center)
+            p.move(to: CGPoint(x: w * 0.38, y: h * 0.05))
+            
+            // Ankle connects to foot pad (narrower at top)
+            p.addCurve(
+                to: CGPoint(x: w * 0.62, y: h * 0.05),
+                control1: CGPoint(x: w * 0.42, y: 0),
+                control2: CGPoint(x: w * 0.58, y: 0)
+            )
+            
+            // Right side down to outer toe
+            p.addCurve(
+                to: CGPoint(x: w * 0.92, y: h * 0.65),
+                control1: CGPoint(x: w * 0.72, y: h * 0.12),
+                control2: CGPoint(x: w * 0.90, y: h * 0.40)
+            )
+            
+            // Right toe tip (rounded)
+            p.addCurve(
+                to: CGPoint(x: w * 0.78, y: h * 0.82),
+                control1: CGPoint(x: w * 0.96, y: h * 0.75),
+                control2: CGPoint(x: w * 0.88, y: h * 0.85)
+            )
+            
+            // Webbing dip between right and center toe
+            p.addCurve(
+                to: CGPoint(x: w * 0.62, y: h * 0.68),
+                control1: CGPoint(x: w * 0.72, y: h * 0.76),
+                control2: CGPoint(x: w * 0.66, y: h * 0.70)
+            )
+            
+            // Center toe (middle, points forward)
+            p.addCurve(
+                to: CGPoint(x: w * 0.50, y: h * 0.95),
+                control1: CGPoint(x: w * 0.58, y: h * 0.78),
+                control2: CGPoint(x: w * 0.55, y: h * 0.92)
+            )
+            
+            // Center toe tip (rounded)
+            p.addCurve(
+                to: CGPoint(x: w * 0.38, y: h * 0.68),
+                control1: CGPoint(x: w * 0.45, y: h * 0.92),
+                control2: CGPoint(x: w * 0.42, y: h * 0.78)
+            )
+            
+            // Webbing dip between center and left toe
+            p.addCurve(
+                to: CGPoint(x: w * 0.22, y: h * 0.82),
+                control1: CGPoint(x: w * 0.34, y: h * 0.70),
+                control2: CGPoint(x: w * 0.28, y: h * 0.76)
+            )
+            
+            // Left toe tip (rounded)
+            p.addCurve(
+                to: CGPoint(x: w * 0.08, y: h * 0.65),
+                control1: CGPoint(x: w * 0.12, y: h * 0.85),
+                control2: CGPoint(x: w * 0.04, y: h * 0.75)
+            )
+            
+            // Left side back up to ankle
+            p.addCurve(
+                to: CGPoint(x: w * 0.38, y: h * 0.05),
+                control1: CGPoint(x: w * 0.10, y: h * 0.40),
+                control2: CGPoint(x: w * 0.28, y: h * 0.12)
+            )
+            
             p.closeSubpath()
         }
     }

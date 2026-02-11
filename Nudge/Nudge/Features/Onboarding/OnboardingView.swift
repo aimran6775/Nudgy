@@ -21,7 +21,7 @@ struct OnboardingView: View {
         OnboardingPage(
             mascot: .listening,
             title: String(localized: "Talk, don't type"),
-            body: String(localized: "Tap the mic and brain dump everything. Nudgy turns your ramble into neat task cards."),
+            body: String(localized: "Tap the mic and unload everything. Nudgy turns your ramble into neat task cards."),
             gradient: [Color(hex: "BF5AF2"), Color(hex: "FF375F")]
         ),
         OnboardingPage(
@@ -33,7 +33,7 @@ struct OnboardingView: View {
         OnboardingPage(
             mascot: .celebrating,
             title: String(localized: "Ready to roll!"),
-            body: String(localized: "Nudgy's here whenever you need a nudge. Let's get your first brain dump going."),
+            body: String(localized: "Nudgy's here whenever you need a nudge. Let's get your first brain unload going."),
             gradient: [Color(hex: "0A84FF"), Color(hex: "5E5CE6")]
         ),
     ]

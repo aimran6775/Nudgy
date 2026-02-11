@@ -52,32 +52,18 @@ struct DailyProgressHeader: View {
         }
         .padding(DesignTokens.spacingMD)
         .background {
-            ZStack {
+            if isAllDone {
                 RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                    .fill(.ultraThinMaterial)
-                
-                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                    .fill(DesignTokens.cardSurface.opacity(0.3))
-                
-                // Subtle accent glow when all done
-                if isAllDone {
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(
-                            LinearGradient(
-                                colors: [DesignTokens.accentComplete.opacity(0.06), .clear],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                    .fill(
+                        LinearGradient(
+                            colors: [DesignTokens.accentComplete.opacity(0.06), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
                         )
-                }
-                
-                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                    .strokeBorder(
-                        (isAllDone ? DesignTokens.accentComplete : Color.white).opacity(0.06),
-                        lineWidth: 0.5
                     )
             }
         }
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         .nudgeAccessibility(
             label: progressAccessibilityLabel,
             traits: .isStaticText

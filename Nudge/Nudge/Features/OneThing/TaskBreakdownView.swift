@@ -108,8 +108,7 @@ struct TaskBreakdownView: View {
             VStack(alignment: .leading, spacing: DesignTokens.spacingXL) {
                 // Original task header
                 HStack(spacing: DesignTokens.spacingSM) {
-                    Text(taskEmoji ?? "📋")
-                        .font(.system(size: 24))
+                    TaskIconView(emoji: taskEmoji, size: .large)
                     
                     Text(taskContent)
                         .font(AppTheme.body.weight(.medium))
@@ -188,8 +187,7 @@ struct TaskBreakdownView: View {
         let isAdded = addedSteps.contains(index)
         
         return HStack(spacing: DesignTokens.spacingSM) {
-            Text(step.emoji)
-                .font(.system(size: 18))
+            StepIconView(emoji: step.emoji, size: 16)
             
             Text(step.task)
                 .font(AppTheme.body)

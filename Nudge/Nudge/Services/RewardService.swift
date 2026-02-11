@@ -96,6 +96,12 @@ final class RewardService {
     /// Today's daily challenges.
     private(set) var dailyChallenges: [DailyChallenge] = []
     
+    /// Fish catches (for aquarium display).
+    private(set) var fishCatches: [FishCatch] = []
+    
+    /// The most recent fish catch (for animation).
+    private(set) var lastFishCatch: FishCatch? = nil
+    
     /// Date the current set of daily challenges was generated.
     private var challengeDate: Date? = nil
     
@@ -112,25 +118,39 @@ final class RewardService {
     // MARK: - Task Completion Reward
     
     /// Record a task completion — earn snowflakes, update streak, etc.
+    /// Pass the completed item to earn species-appropriate fish.
     /// Returns the number of snowflakes earned (for UI animation).
     @discardableResult
-    func recordCompletion(context: ModelContext, isAllClear: Bool = false) -> Int {
+    func recordCompletion(context: ModelContext, item: NudgeItem? = nil, isAllClear: Bool = false) -> Int {
         let wardrobe = fetchOrCreateWardrobe(context: context)
         
         // Update streak
         updateStreak(wardrobe: wardrobe)
         
-        // Calculate snowflakes earned
-        var earned = RewardConstants.snowflakesPerTask
-        
-        // Streak multiplier
-        if wardrobe.currentStreak >= RewardConstants.streakMultiplierThreshold {
-            earned *= RewardConstants.streakMultiplier
+        // Fish economy: determine species and snowflakes
+        let species: FishSpecies
+        if let item {
+            species = FishEconomy.speciesForTask(item)
+        } else {
+            species = .catfish
         }
         
-        // All-clear bonus
-        if isAllClear {
-            earned += RewardConstants.allClearBonus
+        // Calculate snowflakes via fish economy
+        var earned = FishEconomy.snowflakesForCatch(
+            species: species,
+            streak: wardrobe.currentStreak,
+            isAllClear: isAllClear
+        )
+        
+        // Record the fish catch
+        if let item {
+            let fishCatch = FishCatch(
+                species: species,
+                taskContent: item.content,
+                taskEmoji: item.emoji ?? "checklist"
+            )
+            wardrobe.addFishCatch(fishCatch)
+            lastFishCatch = fishCatch
         }
         
         // Credit snowflakes
@@ -333,6 +353,7 @@ final class RewardService {
         levelProgress = wardrobe.levelProgress
         tasksCompletedToday = wardrobe.tasksCompletedToday
         environmentMood = wardrobe.environmentMood
+        fishCatches = wardrobe.fishCatches
         
         // Regenerate challenges if new day
         regenerateChallengesIfNeeded()

@@ -77,7 +77,7 @@ struct TaskLookupTool: Tool {
         
         // Format results concisely (context window is limited)
         let lines = filtered.prefix(8).map { task in
-            var line = "- \(task.emoji ?? "📝") \(task.content) [\(task.statusRaw)]"
+            var line = "- \(task.emoji ?? "doc.text.fill") \(task.content) [\(task.statusRaw)]"
             if task.isOverdue { line += " ⚠️OVERDUE" }
             else if task.isStale { line += " ⏰stale(\(task.ageInDays)d)" }
             if let contact = task.contactName, !contact.isEmpty {

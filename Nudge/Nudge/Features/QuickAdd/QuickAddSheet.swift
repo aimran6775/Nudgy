@@ -56,10 +56,7 @@ struct QuickAddSheet: View {
                     .font(AppTheme.body)
                     .foregroundStyle(DesignTokens.textPrimary)
                     .padding(DesignTokens.spacingLG)
-                    .background(
-                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                            .fill(Color.white.opacity(0.05))
-                    )
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
                     .lineLimit(1...6)
                     .focused($isFocused)
                     .onChange(of: taskText) {
@@ -86,7 +83,7 @@ struct QuickAddSheet: View {
                     // Hint
                     if aiAvailable {
                         Label {
-                            Text(String(localized: "Type naturally — Nudgy will extract the task, emoji & action"))
+                            Text(String(localized: "Type naturally — Nudgy will extract the task, icon & action"))
                                 .font(AppTheme.caption)
                                 .foregroundStyle(DesignTokens.textTertiary)
                         } icon: {
@@ -96,7 +93,7 @@ struct QuickAddSheet: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
-                        Text(String(localized: "Type a single task. For multiple tasks, use Brain Dump."))
+                        Text(String(localized: "Type a single task. For multiple tasks, use Brain Unload."))
                             .font(AppTheme.caption)
                             .foregroundStyle(DesignTokens.textTertiary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -145,8 +142,7 @@ struct QuickAddSheet: View {
                 .foregroundStyle(DesignTokens.textTertiary)
             
             HStack(spacing: DesignTokens.spacingSM) {
-                Text(preview.emoji)
-                    .font(.system(size: 20))
+                StepIconView(emoji: preview.emoji, size: 16)
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(preview.taskContent)

@@ -190,7 +190,7 @@ private struct moodTransitionLines {
     static let productiveToGolden = [
         "GOLDEN HOUR! You've cleared everything! 🌅✨",
         "The cliff has never looked this beautiful! 🎉",
-        "ALL CLEAR! Time to celebrate! 🐧🎊",
+        "Everything done! Time to celebrate! 🐧🎊",
     ]
 
     static let anyToStormy = [

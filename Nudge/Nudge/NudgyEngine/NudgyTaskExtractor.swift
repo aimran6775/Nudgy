@@ -183,7 +183,7 @@ final class NudgyTaskExtractor {
                 systemPrompt: """
                 You extract actionable tasks from natural language. Today is \(todayString).
                 Respond with ONLY valid JSON, no markdown.
-                Format: {"content": "short task (max 8 words)", "emoji": "one emoji", "actionType": "CALL/TEXT/EMAIL or empty", "contactName": "name or empty", "actionTarget": "phone/email/url or empty", "isActionable": true/false, "priority": "high/medium/low", "dueDateString": "YYYY-MM-DD or relative expression or empty"}
+                Format: {"content": "short task (max 8 words)", "emoji": "SF Symbol name like phone.fill or envelope.fill", "actionType": "CALL/TEXT/EMAIL or empty", "contactName": "name or empty", "actionTarget": "phone/email/url or empty", "isActionable": true/false, "priority": "high/medium/low", "dueDateString": "YYYY-MM-DD or relative expression or empty"}
                 If input is just chat/nonsense, set isActionable to false.
                 Infer priority from urgency cues (urgent/ASAP/deadline → high, maybe/someday → low, otherwise medium).
                 Extract time references: "tomorrow" → "tomorrow", "by Friday" → the date of this Friday as YYYY-MM-DD.
@@ -219,7 +219,7 @@ final class NudgyTaskExtractor {
         // Very short input — skip AI
         if wordCount <= 4 {
             return [ExtractedTask(
-                content: transcript, emoji: "📝", actionType: "",
+                content: transcript, emoji: "doc.text.fill", actionType: "",
                 contactName: "", actionTarget: "", isActionable: true,
                 priority: "medium", dueDateString: ""
             )]
@@ -248,7 +248,7 @@ final class NudgyTaskExtractor {
                 
                 FIELD RULES:
                 • content: Short, clear, actionable task (max 8 words). Start with a verb. Strip filler.
-                • emoji: One relevant emoji. Use context: 📞 for calls, ✉️ for email, 🏥 for medical, 💰 for money, 🛒 for shopping, etc.
+                • emoji: An Apple SF Symbol name that represents this task. Use context: phone.fill for calls, envelope.fill for email, cross.case.fill for medical, dollarsign.circle.fill for money, cart.fill for shopping, pawprint.fill for pets, book.fill for reading, checklist for generic tasks, etc.
                 • actionType: "CALL" / "TEXT" / "EMAIL" or "" — detect from verbs like call, ring, text, message, email, send.
                 • contactName: Person or business name if mentioned, "" otherwise.
                 • actionTarget: Only if an explicit phone/email/URL was spoken. Usually "".
@@ -275,10 +275,10 @@ final class NudgyTaskExtractor {
                 
                 EXAMPLE OUTPUT:
                 {"tasks": [
-                  {"content": "Pay rent before the 5th", "emoji": "💰", "actionType": "", "contactName": "", "actionTarget": "", "isActionable": true, "priority": "high", "dueDateString": "\(Self.nextDateForDay(5))"},
-                  {"content": "Call the dentist", "emoji": "🏥", "actionType": "CALL", "contactName": "dentist", "actionTarget": "", "isActionable": true, "priority": "medium", "dueDateString": "tomorrow"},
-                  {"content": "Text Sarah about dinner", "emoji": "📱", "actionType": "TEXT", "contactName": "Sarah", "actionTarget": "", "isActionable": true, "priority": "medium", "dueDateString": "today"},
-                  {"content": "Get car washed", "emoji": "🚗", "actionType": "", "contactName": "", "actionTarget": "", "isActionable": true, "priority": "low", "dueDateString": ""}
+                  {"content": "Pay rent before the 5th", "emoji": "dollarsign.circle.fill", "actionType": "", "contactName": "", "actionTarget": "", "isActionable": true, "priority": "high", "dueDateString": "\(Self.nextDateForDay(5))"},
+                  {"content": "Call the dentist", "emoji": "phone.fill", "actionType": "CALL", "contactName": "dentist", "actionTarget": "", "isActionable": true, "priority": "medium", "dueDateString": "tomorrow"},
+                  {"content": "Text Sarah about dinner", "emoji": "message.fill", "actionType": "TEXT", "contactName": "Sarah", "actionTarget": "", "isActionable": true, "priority": "medium", "dueDateString": "today"},
+                  {"content": "Get car washed", "emoji": "car.fill", "actionType": "", "contactName": "", "actionTarget": "", "isActionable": true, "priority": "low", "dueDateString": ""}
                 ]}
                 """,
                 userPrompt: "Extract tasks from this brain dump:\n\"\(transcript)\"",
@@ -293,14 +293,14 @@ final class NudgyTaskExtractor {
             
             if let data = cleaned.data(using: .utf8),
                let taskList = try? JSONDecoder().decode(ExtractedTaskList.self, from: data) {
-                print("🧠 [TaskExtractor] Extracted \(taskList.tasks.count) tasks from brain dump:")
+                print("[TaskExtractor] Extracted \(taskList.tasks.count) tasks from brain dump:")
                 for (i, task) in taskList.tasks.enumerated() {
                     print("  [\(i+1)] \(task.priority.uppercased()) | \(task.emoji) \(task.content) | due: \(task.dueDateString.isEmpty ? "—" : task.dueDateString) | action: \(task.actionType.isEmpty ? "—" : task.actionType) \(task.contactName)")
                 }
                 return taskList.tasks.isEmpty ? [fallbackExtraction(transcript)] : taskList.tasks
             }
             
-            print("⚠️ [TaskExtractor] Failed to decode JSON, raw response:\n\(cleaned)")
+            print("[TaskExtractor] Failed to decode JSON, raw response:\n\(cleaned)")
             return [fallbackExtraction(transcript)]
         } catch {
             // OpenAI failed — try Apple FM before giving up
@@ -439,7 +439,7 @@ final class NudgyTaskExtractor {
         
         return ExtractedTask(
             content: trimmed,
-            emoji: "📝",
+            emoji: "doc.text.fill",
             actionType: actionType,
             contactName: "",
             actionTarget: "",

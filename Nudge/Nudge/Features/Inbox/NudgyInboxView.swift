@@ -251,7 +251,7 @@ struct NudgyInboxView: View {
                 } label: {
                     HStack(spacing: DesignTokens.spacingSM) {
                         Image(systemName: "mic.fill")
-                        Text(String(localized: "Start a Brain Dump"))
+                        Text(String(localized: "Start a Brain Unload"))
                     }
                     .font(AppTheme.body.weight(.semibold))
                     .foregroundStyle(.white)
@@ -349,17 +349,8 @@ struct NudgyInboxView: View {
                 }
             }
             .padding(DesignTokens.spacingLG)
-            .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.5))
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
-                }
-                .shadow(color: .black.opacity(0.5), radius: 16, y: 4)
-            }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
+            .shadow(color: .black.opacity(0.4), radius: 16, y: 4)
             .padding(.horizontal, DesignTokens.spacingLG)
             .padding(.bottom, 80)
         }
@@ -400,10 +391,8 @@ struct InboxItemRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: DesignTokens.spacingMD) {
-                // Emoji
-                Text(item.emoji ?? "📋")
-                    .font(.system(size: 22))
-                    .frame(width: 36)
+                // Icon
+                TaskIconView(emoji: item.emoji, actionType: item.actionType, size: .medium, accentColor: accentColor)
                 
                 // Content
                 VStack(alignment: .leading, spacing: DesignTokens.spacingXS) {
@@ -509,37 +498,17 @@ struct InboxItemRow: View {
             }
             .padding(DesignTokens.spacingMD)
             .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(.ultraThinMaterial)
-                    
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.4))
-                    
-                    // Accent edge hint (amber for stale items)
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(
-                            LinearGradient(
-                                colors: [accentColor.opacity(item.isStale ? 0.08 : 0.04), .clear],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                // Accent glow visible through glass
+                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
+                    .fill(
+                        LinearGradient(
+                            colors: [accentColor.opacity(item.isStale ? 0.10 : 0.05), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
                         )
-                    
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    accentColor.opacity(0.15),
-                                    Color.white.opacity(0.04)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.5
-                        )
-                }
+                    )
             }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
         .buttonStyle(.plain)
         .contextMenu {

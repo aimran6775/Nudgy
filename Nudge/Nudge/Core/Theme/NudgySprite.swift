@@ -223,13 +223,6 @@ struct NudgySprite: View {
     /// Whether artist PNGs are available. When false, falls back to PenguinMascot bezier.
     var useSpriteArt: Bool = false
     
-    // Animation state (same transforms as LottieNudgyView for consistency)
-    @State private var floatOffset: CGFloat = 0
-    @State private var swayAngle: Double = 0
-    @State private var breathScale: CGFloat = 1.0
-    @State private var bounceOffset: CGFloat = 0
-    @State private var glowOpacity: Double = 0
-    
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     var body: some View {
@@ -255,18 +248,11 @@ struct NudgySprite: View {
                 usePlaceholder: !useSpriteArt
             )
         }
-        // Expression-driven transforms (kept from LottieNudgyView for identical feel)
-        .scaleEffect(breathScale)
-        .offset(y: floatOffset + bounceOffset)
-        .rotationEffect(.degrees(swayAngle))
+        // Subtle accent glow only — all motion is handled by PenguinMascot internally
         .shadow(
-            color: accentColor.opacity(glowOpacity),
+            color: accentColor.opacity(0.15),
             radius: size * 0.08
         )
-        .onAppear { startTransformAnimations() }
-        .onChange(of: expression) { _, _ in
-            startTransformAnimations()
-        }
     }
     
     // MARK: - Accessory Filtering
@@ -284,47 +270,8 @@ struct NudgySprite: View {
     }
     
     // MARK: - Transform Animations
-    
-    private func startTransformAnimations() {
-        guard !reduceMotion else {
-            floatOffset = 0
-            swayAngle = 0
-            breathScale = 1.0
-            bounceOffset = 0
-            glowOpacity = 0.15
-            return
-        }
-        
-        // Float
-        withAnimation(AnimationConstants.mascotFloat) {
-            floatOffset = expression == .sleeping ? 0 : -AnimationConstants.mascotFloatAmplitude
-        }
-        
-        // Sway
-        withAnimation(AnimationConstants.mascotSway) {
-            swayAngle = expression == .sleeping ? 0 : AnimationConstants.mascotSwayAngle
-        }
-        
-        // Breathe
-        withAnimation(AnimationConstants.mascotBreath) {
-            breathScale = AnimationConstants.mascotBreathMax
-        }
-        
-        // Glow
-        withAnimation(AnimationConstants.glowPulse) {
-            glowOpacity = expression == .sleeping ? 0 : 0.2
-        }
-        
-        // Bounce for happy/celebrating
-        if expression == .happy || expression == .celebrating {
-            bounceOffset = -AnimationConstants.penguinBounceHeight
-            withAnimation(AnimationConstants.penguinBounce) {
-                bounceOffset = 0
-            }
-        } else {
-            bounceOffset = 0
-        }
-    }
+    // All motion is handled by PenguinMascot internally.
+    // NudgySprite only adds a static accent glow shadow.
 }
 
 // MARK: - Preview

@@ -155,7 +155,7 @@ enum NudgyPersonality {
         """
         \(coreIdentity)
         
-        YOU ARE IN BRAIN DUMP MODE. This is a voice conversation.
+        YOU ARE IN BRAIN UNLOAD MODE. This is a voice conversation.
         
         YOUR JOB: Listen carefully and capture every actionable item as a task using task_action. Create tasks as you hear them — don't wait.
         
@@ -264,7 +264,7 @@ enum NudgyPersonality {
         if let task = currentTask {
             prompt += " Their current task is: \"\(task)\". Maybe a gentle observation or soft encouragement."
         } else if activeCount == 0 {
-            prompt += " Nothing to do. Just be. Maybe suggest a brain dump, or just sit together."
+            prompt += " Nothing to do. Just be. Maybe suggest a brain unload, or just sit together."
         }
         if timeOfDay == "late night" {
             prompt += " It's late. Gently suggest rest, but don't push."
@@ -410,7 +410,13 @@ enum NudgyPersonality {
             "Quiet days are good days too 💙",
             "…I was just thinking about fish. Do you ever just think about fish? 🐟",
             "*watching the ice* …It's peaceful, isn't it? 🌙",
-            "If you feel like brain dumping, I'll listen. If not, that's okay too 💙",
+            "If you feel like unloading your thoughts, I'll listen. If not, that's okay too 💙",
+            "*adjusts scarf* …I like being here with you 🐧",
+            "You know what's nice? Silence. But the together kind 🧊",
+            "*looks around* …This is a good phone. Cozy 🐧",
+            "*stretches flippers* …Just making sure they still work 💙",
+            "Fun fact: penguins can hold their breath for 20 minutes. …I've never tested it though 🐧",
+            "*yawns* …Sorry. That was a penguin yawn. It's small 💙",
         ]
         
         static let emotionalSupport = [
@@ -437,7 +443,7 @@ enum NudgyPersonality {
             "Tell me what's on your mind. No rush 📝",
             "*settles in* Okay. I'm ready when you are 🐧",
             "Say whatever comes to mind. I'll sort it out 💙",
-            "Brain dump time. …Just let it all flow. I'm here 🧊",
+            "Unload time. …Just let it all flow. I'm here 🧊",
         ]
         
         static let brainDumpProcessing = [

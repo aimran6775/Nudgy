@@ -290,7 +290,7 @@ struct OneThingView: View {
                 } label: {
                     HStack(spacing: DesignTokens.spacingSM) {
                         Image(systemName: "mic.fill")
-                        Text(String(localized: "Start a Brain Dump"))
+                        Text(String(localized: "Start a Brain Unload"))
                     }
                     .font(AppTheme.body.weight(.semibold))
                     .foregroundStyle(.white)
@@ -303,8 +303,8 @@ struct OneThingView: View {
                 }
                 .buttonStyle(.plain)
                 .nudgeAccessibility(
-                    label: String(localized: "Start a brain dump"),
-                    hint: String(localized: "Opens the voice brain dump recorder"),
+                    label: String(localized: "Start a brain unload"),
+                    hint: String(localized: "Opens the voice brain unload recorder"),
                     traits: .isButton
                 )
                 
@@ -424,7 +424,7 @@ struct OneThingView: View {
         // Award snowflakes for completion
         let remaining = max(0, activeQueue.count - 1)
         let isAllClear = remaining == 0
-        let earned = RewardService.shared.recordCompletion(context: modelContext, isAllClear: isAllClear)
+        let earned = RewardService.shared.recordCompletion(context: modelContext, item: item, isAllClear: isAllClear)
         RewardService.shared.updateMood(context: modelContext, isAllClear: isAllClear)
         
         // Show snowflake earned feedback in speech bubble
@@ -537,7 +537,7 @@ struct OneThingView: View {
             Task {
                 await LiveActivityManager.shared.update(
                     taskContent: item.content,
-                    taskEmoji: item.emoji ?? "📋",
+                    taskEmoji: item.emoji ?? "checklist",
                     queuePosition: currentIndex + 1,
                     queueTotal: activeQueue.count,
                     accentHex: accentHex,
@@ -547,7 +547,7 @@ struct OneThingView: View {
         } else {
             LiveActivityManager.shared.start(
                 taskContent: item.content,
-                taskEmoji: item.emoji ?? "📋",
+                taskEmoji: item.emoji ?? "checklist",
                 queuePosition: currentIndex + 1,
                 queueTotal: activeQueue.count,
                 accentHex: accentHex,
@@ -643,17 +643,8 @@ struct OneThingView: View {
                 )
             }
             .padding(DesignTokens.spacingLG)
-            .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.5))
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
-                }
-                .shadow(color: .black.opacity(0.5), radius: 16, y: 4)
-            }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
+            .shadow(color: .black.opacity(0.4), radius: 16, y: 4)
             .padding(.horizontal, DesignTokens.spacingLG)
             .padding(.bottom, 80)
         }

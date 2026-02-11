@@ -6,7 +6,7 @@
 //  Since .swipeActions only works inside List, this provides the same UX
 //  for our LazyVStack-based layouts.
 //
-//  Swipe left  → trailing action (snooze, amber)
+//  Swipe left  → trailing action (delete, red)
 //  Swipe right → leading action  (done, green)
 //
 //  ADHD-friendly: full swipe triggers the action with haptic feedback,
@@ -28,7 +28,7 @@ struct SwipeableRow<Content: View>: View {
     /// Action triggered on full swipe left (trailing)
     var onSwipeTrailing: (() -> Void)?
     var trailingLabel: String = "Snooze"
-    var trailingIcon: String = "clock.fill"
+    var trailingIcon: String = "moon.zzz.fill"
     var trailingColor: Color = DesignTokens.accentStale
     
     @State private var offset: CGFloat = 0
@@ -43,23 +43,28 @@ struct SwipeableRow<Content: View>: View {
     }
     
     var body: some View {
-        ZStack {
-            // Background action indicators
+        ZStack(alignment: .center) {
+            // Background action indicators — visible colored bars that slide in
             HStack(spacing: 0) {
                 // Leading (swipe right) — Done
                 if onSwipeLeading != nil {
                     HStack(spacing: 6) {
                         Spacer()
                         Image(systemName: leadingIcon)
-                            .font(.system(size: 14, weight: .bold))
-                        if offset > triggerThreshold * 0.6 {
+                            .font(.system(size: 16, weight: .bold))
+                        if offset > triggerThreshold * 0.5 {
                             Text(leadingLabel)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 14, weight: .semibold))
+                                .transition(.opacity)
                         }
                     }
                     .foregroundStyle(.white)
-                    .frame(width: max(0, offset))
-                    .background(leadingColor.opacity(min(1, offset / triggerThreshold)))
+                    .padding(.trailing, DesignTokens.spacingMD)
+                    .frame(width: max(0, offset), alignment: .trailing)
+                    .frame(maxHeight: .infinity)
+                    .background(
+                        leadingColor.opacity(min(1.0, Double(offset) / Double(triggerThreshold)))
+                    )
                     .clipShape(
                         UnevenRoundedRectangle(
                             topLeadingRadius: DesignTokens.cornerRadiusCard,
@@ -73,17 +78,22 @@ struct SwipeableRow<Content: View>: View {
                 // Trailing (swipe left) — Snooze
                 if onSwipeTrailing != nil {
                     HStack(spacing: 6) {
-                        if -offset > triggerThreshold * 0.6 {
+                        if -offset > triggerThreshold * 0.5 {
                             Text(trailingLabel)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 14, weight: .semibold))
+                                .transition(.opacity)
                         }
                         Image(systemName: trailingIcon)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                         Spacer()
                     }
                     .foregroundStyle(.white)
-                    .frame(width: max(0, -offset))
-                    .background(trailingColor.opacity(min(1, -offset / triggerThreshold)))
+                    .padding(.leading, DesignTokens.spacingMD)
+                    .frame(width: max(0, -offset), alignment: .leading)
+                    .frame(maxHeight: .infinity)
+                    .background(
+                        trailingColor.opacity(min(1.0, Double(-offset) / Double(triggerThreshold)))
+                    )
                     .clipShape(
                         UnevenRoundedRectangle(
                             bottomTrailingRadius: DesignTokens.cornerRadiusCard,
@@ -171,7 +181,7 @@ struct SwipeableRow<Content: View>: View {
                     .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: "1C1C1E")))
                 },
                 onSwipeLeading: { print("Done!") },
-                onSwipeTrailing: { print("Snooze!") }
+                onSwipeTrailing: { print("Delete!") }
             )
             
             SwipeableRow(

@@ -100,39 +100,39 @@ enum SmartPickEngine {
         return scored.first?.item
     }
     
-    /// Generate a short explanation of why this task was picked
+    /// Generate a short explanation of why this task was picked — Nudgy's gentle voice.
     static func reason(for item: NudgeItem) -> String {
         let calendar = Calendar.current
         let now = Date()
         let hour = calendar.component(.hour, from: now)
         
         if let due = item.dueDate, due < now {
-            return String(localized: "This one's overdue — let's clear it 💪")
+            return String(localized: "this one’s been waiting. …whenever you’re ready 💙")
         }
         
         if let due = item.dueDate, calendar.isDateInToday(due) {
-            return String(localized: "Due today — perfect time to tackle it")
+            return String(localized: "due today. …just this one for now 🐧")
         }
         
         if item.ageInDays >= 5 {
-            return String(localized: "Been sitting for \(item.ageInDays) days — let's knock it out")
+            return String(localized: "been sitting \(item.ageInDays) days. …maybe today’s the day? 🧊")
         }
         
         if let mins = item.estimatedMinutes, mins <= 10 {
-            return String(localized: "Quick win — just \(mins) minutes ⚡")
+            return String(localized: "a quick one — \(mins) minutes or less ✨")
         }
         
         if item.hasDraft {
-            return String(localized: "Draft's ready — just hit send")
+            return String(localized: "draft’s already done. …just needs a send 📬")
         }
         
         if let scheduled = item.scheduledTime {
             let scheduledHour = calendar.component(.hour, from: scheduled)
             if abs(hour - scheduledHour) <= 1 {
-                return String(localized: "Scheduled around now — good timing")
+                return String(localized: "this was meant for right about now ☕")
             }
         }
         
-        return String(localized: "This feels like a good next step")
+        return String(localized: "this one feels right. …one thing at a time 🐧")
     }
 }

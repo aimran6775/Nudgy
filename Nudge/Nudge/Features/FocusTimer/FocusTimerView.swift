@@ -122,8 +122,7 @@ struct FocusTimerView: View {
             
             // Task info
             VStack(spacing: DesignTokens.spacingSM) {
-                Text(item.emoji ?? "🎯")
-                    .font(.system(size: 48))
+                TaskIconView(emoji: item.emoji, actionType: item.actionType, size: .large, accentColor: DesignTokens.accentActive)
                 
                 Text(item.content)
                     .font(AppTheme.headline)
@@ -257,8 +256,7 @@ struct FocusTimerView: View {
                         .monospacedDigit()
                         .contentTransition(.numericText())
                     
-                    Text(item.emoji ?? "🎯")
-                        .font(.system(size: 28))
+                    TaskIconView(emoji: item.emoji, actionType: item.actionType, size: .medium, accentColor: DesignTokens.accentActive)
                     
                     Text(item.content)
                         .font(AppTheme.caption)
@@ -428,7 +426,7 @@ struct FocusTimerView: View {
         
         // Reward
         let isAllClear = repo.activeCount() == 0
-        RewardService.shared.recordCompletion(context: modelContext, isAllClear: isAllClear)
+        RewardService.shared.recordCompletion(context: modelContext, item: item, isAllClear: isAllClear)
         
         HapticService.shared.swipeDone()
         SoundService.shared.play(.taskDone)

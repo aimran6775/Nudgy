@@ -12,6 +12,11 @@ final class AuthSession {
         case checking
         case signedOut(reason: SignedOutReason?)
         case signedIn(UserContext)
+        
+        var isSignedIn: Bool {
+            if case .signedIn = self { return true }
+            return false
+        }
     }
 
     enum SignedOutReason: Equatable {

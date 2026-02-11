@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import CoreSpotlight
 import SwiftData
 
 // MARK: - Tab Definition
@@ -102,6 +103,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             refreshActiveCount()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .nudgeAddToCalendar)) { notification in
+            handleAddToCalendar(notification)
+        }
         .onAppear {
             setupRepository()
             refreshActiveCount()
@@ -109,6 +113,34 @@ struct ContentView: View {
         .onChange(of: selectedTab) { _, _ in refreshActiveCount() }
         .onOpenURL { url in
             handleDeepLink(url)
+        }
+        .onContinueUserActivity(CSSearchableItemActionType) { activity in
+            // Handle Spotlight search result tap
+            guard let identifier = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
+                  let uuid = UUID(uuidString: identifier) else { return }
+            // Navigate to the task
+            selectedTab = .nudges
+            NotificationCenter.default.post(
+                name: .nudgeNotificationAction,
+                object: nil,
+                userInfo: ["action": "view", "itemID": identifier]
+            )
+        }
+        // Handoff: continue viewing a task from another device
+        .onContinueUserActivity(HandoffService.viewTaskActivity) { activity in
+            if let url = HandoffService.handleContinuation(activity) {
+                handleDeepLink(url)
+            }
+        }
+        .onContinueUserActivity(HandoffService.browseQueueActivity) { activity in
+            if let url = HandoffService.handleContinuation(activity) {
+                handleDeepLink(url)
+            }
+        }
+        .onContinueUserActivity(HandoffService.brainDumpActivity) { activity in
+            if let url = HandoffService.handleContinuation(activity) {
+                handleDeepLink(url)
+            }
         }
     }
 
@@ -146,7 +178,7 @@ struct ContentView: View {
             return
         }
         
-        let emoji = topItem.emoji ?? "📌"
+        let emoji = topItem.emoji ?? "pin.fill"
         let accentHex: String
         switch topItem.accentStatus {
         case .stale:    accentHex = "FFB800"
@@ -209,6 +241,22 @@ struct ContentView: View {
         }
 
         refreshActiveCount()
+    }
+
+    private func handleAddToCalendar(_ notification: Foundation.Notification) {
+        guard let itemIDString = notification.userInfo?["itemID"] as? String,
+              let itemID = UUID(uuidString: itemIDString) else { return }
+
+        setupRepository()
+        let allItems = repository?.fetchActiveQueue() ?? []
+        guard let item = allItems.first(where: { $0.id == itemID }) else { return }
+
+        Task {
+            if let eventID = await CalendarService.shared.createEvent(from: item) {
+                HapticService.shared.swipeDone()
+                print("📅 Created calendar event: \(eventID)")
+            }
+        }
     }
 
     /// Handle deep links

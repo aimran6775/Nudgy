@@ -74,8 +74,9 @@ struct TaskTransitionOverlay: View {
     
     private var celebrateView: some View {
         VStack(spacing: DesignTokens.spacingLG) {
-            Text(completedEmoji)
+            Image(systemName: TaskIconResolver.resolveSymbol(for: completedEmoji))
                 .font(.system(size: 64))
+                .foregroundStyle(DesignTokens.accentComplete)
                 .scaleEffect(reduceMotion ? 1.0 : 1.2)
                 .animation(
                     reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.5),
@@ -104,8 +105,9 @@ struct TaskTransitionOverlay: View {
                 .foregroundStyle(DesignTokens.textTertiary)
                 .textCase(.uppercase)
             
-            Text(nextEmoji ?? "📋")
+            Image(systemName: TaskIconResolver.resolveSymbol(for: nextEmoji ?? "checklist"))
                 .font(.system(size: 48))
+                .foregroundStyle(DesignTokens.accentActive)
             
             Text(nextTask ?? "")
                 .font(AppTheme.title3)

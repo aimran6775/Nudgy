@@ -22,7 +22,7 @@ struct RoutineEditorView: View {
     
     // Form state
     @State private var name: String = ""
-    @State private var emoji: String = "📋"
+    @State private var emoji: String = "checklist"
     @State private var schedule: RepeatSchedule = .daily
     @State private var customDays: Set<Int> = []
     @State private var startHour: Int = 8
@@ -42,9 +42,9 @@ struct RoutineEditorView: View {
     ]
     
     private let routineEmojis = [
-        "☀️", "🌙", "💪", "🧘", "📚", "🎯", "🏃", "🍳",
-        "💊", "🧹", "📝", "🎨", "🧠", "💤", "🚿", "🌿",
-        "🐾", "📱", "🎵", "☕", "🥗", "🏋️", "📋", "✨"
+        "sun.max.fill", "moon.fill", "dumbbell.fill", "figure.mind.and.body", "books.vertical.fill", "target", "figure.run", "frying.pan.fill",
+        "pills.fill", "sparkles", "doc.text.fill", "paintpalette.fill", "brain.head.profile.fill", "bed.double.fill", "drop.fill", "leaf.fill",
+        "pawprint.fill", "iphone", "music.note", "cup.and.saucer.fill", "fork.knife", "scalemass.fill", "checklist", "star.fill"
     ]
     
     private let colorOptions: [(hex: String, name: String)] = [
@@ -121,8 +121,9 @@ struct RoutineEditorView: View {
             Button {
                 showEmojiGrid.toggle()
             } label: {
-                Text(emoji)
-                    .font(.system(size: 48))
+                Image(systemName: emoji)
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundStyle(Color(hex: colorHex))
                     .frame(width: 80, height: 80)
                     .background(
                         Circle()
@@ -143,8 +144,9 @@ struct RoutineEditorView: View {
                             showEmojiGrid = false
                             HapticService.shared.actionButtonTap()
                         } label: {
-                            Text(e)
-                                .font(.system(size: 28))
+                            Image(systemName: e)
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(Color(hex: colorHex))
                                 .frame(width: 40, height: 40)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8)
@@ -155,10 +157,7 @@ struct RoutineEditorView: View {
                     }
                 }
                 .padding(DesignTokens.spacingSM)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.6))
-                )
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
                 .transition(.scale(scale: 0.95).combined(with: .opacity))
             }
             
@@ -168,11 +167,7 @@ struct RoutineEditorView: View {
                 .foregroundStyle(DesignTokens.textPrimary)
                 .multilineTextAlignment(.center)
                 .padding(DesignTokens.spacingMD)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.4))
-                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-                )
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
     }
     
@@ -283,10 +278,7 @@ struct RoutineEditorView: View {
                 .colorScheme(.dark)
             }
             .padding(DesignTokens.spacingMD)
-            .background(
-                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                    .fill(DesignTokens.cardSurface.opacity(0.4))
-            )
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
     }
     
@@ -376,14 +368,7 @@ struct RoutineEditorView: View {
                 }
             }
             .padding(DesignTokens.spacingMD)
-            .background(
-                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                    .fill(DesignTokens.cardSurface.opacity(0.3))
-                    .strokeBorder(
-                        DesignTokens.accentActive.opacity(0.15),
-                        style: StrokeStyle(lineWidth: 1, dash: [6, 4])
-                    )
-            )
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
     }
     
@@ -406,9 +391,8 @@ struct RoutineEditorView: View {
                         .fill(Color(hex: colorHex).opacity(0.12))
                 )
             
-            // Emoji
-            Text(step.emoji ?? "•")
-                .font(.system(size: 16))
+            // Icon
+            StepIconView(emoji: step.emoji ?? "circle.fill", size: 14)
             
             // Content
             VStack(alignment: .leading, spacing: 2) {
@@ -442,10 +426,7 @@ struct RoutineEditorView: View {
         }
         .padding(DesignTokens.spacingSM)
         .padding(.horizontal, DesignTokens.spacingXS)
-        .background(
-            RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusChip)
-                .fill(DesignTokens.cardSurface.opacity(0.3))
-        )
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusChip))
     }
     
     // MARK: - Delete Section
@@ -552,26 +533,26 @@ struct RoutineEditorView: View {
     private func guessEmoji(for text: String) -> String {
         let lower = text.lowercased()
         let emojiMap: [(keywords: [String], emoji: String)] = [
-            (["wake", "alarm", "get up"], "⏰"),
-            (["shower", "bath", "wash"], "🚿"),
-            (["brush", "teeth"], "🪥"),
-            (["breakfast", "eat", "meal", "food", "lunch", "dinner"], "🍳"),
-            (["coffee", "tea"], "☕"),
-            (["exercise", "workout", "gym", "run", "jog"], "💪"),
-            (["meditat", "mindful", "breath"], "🧘"),
-            (["read", "book", "article"], "📚"),
-            (["write", "journal"], "📝"),
-            (["clean", "tidy", "laundry", "dishes"], "🧹"),
-            (["walk", "dog", "pet"], "🐾"),
-            (["meds", "medicine", "vitamin", "pill"], "💊"),
-            (["stretch", "yoga"], "🧘"),
-            (["water", "drink", "hydrate"], "💧"),
-            (["email", "inbox"], "📧"),
-            (["review", "plan", "agenda"], "📋"),
-            (["skin", "face", "moistur"], "✨"),
-            (["sleep", "bed", "rest"], "💤"),
-            (["phone", "screen"], "📱"),
-            (["music", "listen"], "🎵")
+            (["wake", "alarm", "get up"], "alarm.fill"),
+            (["shower", "bath", "wash"], "drop.fill"),
+            (["brush", "teeth"], "mouth.fill"),
+            (["breakfast", "eat", "meal", "food", "lunch", "dinner"], "frying.pan.fill"),
+            (["coffee", "tea"], "cup.and.saucer.fill"),
+            (["exercise", "workout", "gym", "run", "jog"], "dumbbell.fill"),
+            (["meditat", "mindful", "breath"], "figure.mind.and.body"),
+            (["read", "book", "article"], "books.vertical.fill"),
+            (["write", "journal"], "doc.text.fill"),
+            (["clean", "tidy", "laundry", "dishes"], "sparkles"),
+            (["walk", "dog", "pet"], "pawprint.fill"),
+            (["meds", "medicine", "vitamin", "pill"], "pills.fill"),
+            (["stretch", "yoga"], "figure.mind.and.body"),
+            (["water", "drink", "hydrate"], "drop.fill"),
+            (["email", "inbox"], "envelope.fill"),
+            (["review", "plan", "agenda"], "checklist"),
+            (["skin", "face", "moistur"], "star.fill"),
+            (["sleep", "bed", "rest"], "bed.double.fill"),
+            (["phone", "screen"], "iphone"),
+            (["music", "listen"], "music.note")
         ]
         
         for entry in emojiMap {

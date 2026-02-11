@@ -66,7 +66,7 @@ enum DesignTokens {
     
     // MARK: Sizing
     
-    static let penguinSizeHero: CGFloat = 240   // Central character on main screen
+    static let penguinSizeHero: CGFloat = 160   // Central character — matches intro Nudgy size
     static let penguinSizeLarge: CGFloat = 120
     static let penguinSizeMedium: CGFloat = 80
     static let penguinSizeSmall: CGFloat = 40

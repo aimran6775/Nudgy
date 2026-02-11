@@ -124,7 +124,7 @@ struct PaywallView: View {
     
     private var featureComparison: some View {
         VStack(spacing: 0) {
-            featureRow(String(localized: "Brain Dumps"), free: String(localized: "3/day"), pro: String(localized: "Unlimited"))
+            featureRow(String(localized: "Brain Unloads"), free: String(localized: "3/day"), pro: String(localized: "Unlimited"))
             Divider().background(DesignTokens.cardBorder)
             featureRow(String(localized: "Saved Items"), free: String(localized: "5 total"), pro: String(localized: "Unlimited"))
             Divider().background(DesignTokens.cardBorder)
@@ -134,14 +134,7 @@ struct PaywallView: View {
             Divider().background(DesignTokens.cardBorder)
             featureRow(String(localized: "Action Buttons in Notifications"), free: "—", pro: "✓")
         }
-        .background(
-            RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                .fill(DesignTokens.cardSurface.opacity(DesignTokens.cardOpacity))
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .strokeBorder(DesignTokens.cardBorder, lineWidth: DesignTokens.cardBorderWidth)
-                )
-        )
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         .padding(.horizontal, DesignTokens.spacingLG)
     }
     

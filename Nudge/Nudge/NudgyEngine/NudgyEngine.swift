@@ -356,8 +356,8 @@ final class NudgyEngine {
     private func startBodyDoublingTimer() {
         bodyDoublingTimer?.invalidate()
         // Check every 5 minutes during body doubling
-        bodyDoublingTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+        bodyDoublingTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
+            Task { @MainActor [weak self] in
                 guard let self, self.isBodyDoubling else { return }
                 if let message = self.bodyDoublingCheckIn() {
                     self.speak(message)

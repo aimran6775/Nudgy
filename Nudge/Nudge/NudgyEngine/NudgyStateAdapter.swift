@@ -83,6 +83,28 @@ final class NudgyStateAdapter {
                     #if DEBUG
                     print("🧠 Learned: \(fact)")
                     #endif
+                case .actionExecuted(let actionType, let target):
+                    let icon = switch actionType {
+                    case "CALL": "📞"
+                    case "TEXT": "💬"
+                    case "EMAIL": "📧"
+                    case "SEARCH": "🔍"
+                    case "NAVIGATE": "🗺️"
+                    default: "⚡"
+                    }
+                    state.addSystemMessage("\(icon) Executing: \(actionType.lowercased()) → \(target)")
+                case .draftGenerated(let type, let recipient, let body, _):
+                    let icon = type == "email" ? "📧" : "💬"
+                    // Add a rich message with the draft attachment
+                    var msg = ChatMessage(role: .nudgy, text: "\(icon) Draft for \(recipient) ready — tap to review")
+                    msg.attachment = .draft(DraftAttachment(
+                        draftType: type,
+                        recipientName: recipient,
+                        subject: nil,
+                        body: body,
+                        contactTarget: nil
+                    ))
+                    state.chatMessages.append(msg)
                 }
             }
             
@@ -354,31 +376,46 @@ final class NudgyStateAdapter {
         NudgyConversationManager.shared.clearConversation()
     }
     
-    // MARK: - Proactive Nudges
+    // MARK: - Proactive Nudges (Conversational)
     
+    /// Proactive nudges now enter chat mode so the user can respond.
+    /// They feel like Nudgy initiating a conversation, not a notification.
     private func proactiveNudge(overdueCount: Int, staleCount: Int, doneToday: Int, activeCount: Int) {
         guard let state = penguinState else { return }
         
+        let line: String
         if overdueCount > 0 {
             state.expression = .nudging
-            let line = overdueCount == 1
-                ? String(localized: "Hey, you have one overdue task. Let's knock it out? 💪")
-                : String(localized: "\(overdueCount) tasks are overdue. Want to tackle one together? 💪")
-            state.say(line, style: .speech, autoDismiss: 5.0)
+            line = overdueCount == 1
+                ? String(localized: "Hey… one thing is overdue. Want to look at it together? 💙")
+                : String(localized: "\(overdueCount) things have been waiting. …Pick the easiest one? 💙")
         } else if staleCount > 0 {
             state.expression = .thinking
-            let line = staleCount == 1
-                ? String(localized: "One task has been sitting a while. Want to look at it? 🤔")
-                : String(localized: "\(staleCount) tasks haven't been touched in 3+ days. Let's review? 📋")
-            state.say(line, style: .whisper, autoDismiss: 5.0)
+            line = staleCount == 1
+                ? String(localized: "One thing has been sitting a while. …Still need it? 🧊")
+                : String(localized: "\(staleCount) things haven't moved in a few days. …Want to sort through them? 🧊")
+        } else {
+            return
         }
         
-        // Return to idle
+        // Show as a speech bubble AND add to chat history so the user can reply
+        state.say(line, style: .speech, autoDismiss: 8.0)
+        state.addNudgyMessage(line)
+        
+        // Transition to chatting mode so the user can respond
+        state.interactionMode = .chatting
+        state.isChatInputActive = true
+        
+        // Auto-settle back to ambient if no interaction
         Task {
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(12))
             guard let state = self.penguinState else { return }
-            if state.expression == .nudging || state.expression == .thinking {
-                state.expression = .idle
+            if state.interactionMode == .chatting && !state.isChatGenerating {
+                state.interactionMode = .ambient
+                state.isChatInputActive = false
+                if state.expression == .nudging || state.expression == .thinking {
+                    state.expression = .idle
+                }
             }
         }
     }

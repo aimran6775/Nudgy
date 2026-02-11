@@ -27,8 +27,9 @@ struct SectionEmptyState: View {
     
     var body: some View {
         HStack(spacing: DesignTokens.spacingSM) {
-            Text(config.emoji)
+            Image(systemName: config.emoji)
                 .font(.system(size: 14))
+                .foregroundStyle(config.textColor)
             
             Text(config.message)
                 .font(.system(size: 13, weight: .medium))
@@ -71,8 +72,8 @@ private struct EmptyStateConfig {
             if hasCompletedToday {
                 // Completed everything — celebrate!
                 return EmptyStateConfig(
-                    emoji: "🎉",
-                    message: String(localized: "All clear — enjoy the win"),
+                    emoji: "party.popper.fill",
+                    message: String(localized: "You did it — enjoy the win"),
                     textColor: DesignTokens.accentComplete,
                     action: nil,
                     accessibilityLabel: String(localized: "All tasks for today are complete. Enjoy the win!")
@@ -80,7 +81,7 @@ private struct EmptyStateConfig {
             } else {
                 // Nothing scheduled yet
                 return EmptyStateConfig(
-                    emoji: "🌤️",
+                    emoji: "sun.max.fill",
                     message: String(localized: "Nothing for today yet"),
                     textColor: DesignTokens.textTertiary,
                     action: EmptyStateAction(
@@ -95,7 +96,7 @@ private struct EmptyStateConfig {
             
         case .tomorrow:
             return EmptyStateConfig(
-                emoji: "☁️",
+                emoji: "cloud.fill",
                 message: String(localized: "Tomorrow's looking light"),
                 textColor: DesignTokens.textTertiary,
                 action: nil,
@@ -104,7 +105,7 @@ private struct EmptyStateConfig {
             
         case .thisWeek:
             return EmptyStateConfig(
-                emoji: "📭",
+                emoji: "tray.fill",
                 message: String(localized: "This week is clear"),
                 textColor: DesignTokens.textTertiary,
                 action: nil,
@@ -113,7 +114,7 @@ private struct EmptyStateConfig {
             
         case .later:
             return EmptyStateConfig(
-                emoji: "🏖️",
+                emoji: "beach.umbrella.fill",
                 message: String(localized: "Nothing on the horizon"),
                 textColor: DesignTokens.textTertiary,
                 action: nil,
@@ -122,7 +123,7 @@ private struct EmptyStateConfig {
             
         case .snoozed:
             return EmptyStateConfig(
-                emoji: "⏰",
+                emoji: "alarm.fill",
                 message: String(localized: "Nothing snoozed"),
                 textColor: DesignTokens.textTertiary,
                 action: nil,
@@ -131,7 +132,7 @@ private struct EmptyStateConfig {
             
         case .doneToday:
             return EmptyStateConfig(
-                emoji: "🌅",
+                emoji: "sunrise.fill",
                 message: String(localized: "Fresh start — nothing done yet"),
                 textColor: DesignTokens.textTertiary,
                 action: nil,

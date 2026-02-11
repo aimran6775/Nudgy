@@ -189,7 +189,7 @@ struct LottieNudgyView: View {
         switch expression {
         case .idle:        return String(localized: "Nudgy the penguin, relaxing")
         case .happy:       return String(localized: "Nudgy celebrating your progress")
-        case .thinking:    return String(localized: "Nudgy thinking about your brain dump")
+        case .thinking:    return String(localized: "Nudgy thinking about what you said")
         case .sleeping:    return String(localized: "Nudgy resting, all tasks done")
         case .celebrating: return String(localized: "Nudgy celebrating, all tasks complete!")
         case .thumbsUp:    return String(localized: "Nudgy giving a thumbs up")

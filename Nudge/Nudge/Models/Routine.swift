@@ -120,7 +120,7 @@ final class Routine {
     
     init(
         name: String,
-        emoji: String = "📋",
+        emoji: String = "checklist",
         schedule: RepeatSchedule = .daily,
         startHour: Int = 8,
         startMinute: Int = 0,

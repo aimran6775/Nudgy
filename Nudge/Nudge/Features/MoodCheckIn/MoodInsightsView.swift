@@ -140,10 +140,7 @@ struct MoodInsightsView: View {
             }
             .padding(DesignTokens.spacingMD)
             .frame(height: 160)
-            .background(
-                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                    .fill(DesignTokens.cardSurface.opacity(0.3))
-            )
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
     }
     
@@ -193,10 +190,7 @@ struct MoodInsightsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, DesignTokens.spacingMD)
-        .background(
-            RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                .fill(DesignTokens.cardSurface.opacity(0.3))
-        )
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
     }
     
     // MARK: - Productivity Correlation
@@ -240,10 +234,7 @@ struct MoodInsightsView: View {
                 }
             }
             .padding(DesignTokens.spacingMD)
-            .background(
-                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                    .fill(DesignTokens.cardSurface.opacity(0.3))
-            )
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
     }
     

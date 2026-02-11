@@ -2,11 +2,11 @@
 //  CalendarService.swift
 //  Nudge
 //
-//  EventKit integration for reading user calendar events.
-//  Merges calendar data into the timeline view.
+//  EventKit integration for reading user calendar events
+//  and writing NudgeItem tasks as calendar events.
 //
-//  Privacy: Requests read-only access to Calendar.
-//  Always check authorization before fetching.
+//  Privacy: Requests full access to Calendar.
+//  Always check authorization before fetching/writing.
 //
 
 import EventKit
@@ -83,6 +83,71 @@ final class CalendarService {
                     nudgeItem: nil
                 )
             }
+    }
+    
+    // MARK: - Write Events
+    
+    /// Create a calendar event from a NudgeItem.
+    /// Returns the event identifier on success.
+    @discardableResult
+    func createEvent(from item: NudgeItem) async -> String? {
+        if !isAuthorized {
+            let granted = await requestAccess()
+            guard granted else { return nil }
+        }
+        
+        let event = EKEvent(eventStore: eventStore)
+        event.title = item.content
+        
+        // Use due date if available, otherwise default to next hour
+        let startDate: Date
+        if let dueDate = item.dueDate {
+            startDate = dueDate
+        } else {
+            let calendar = Calendar.current
+            let now = Date()
+            let nextHour = calendar.date(byAdding: .hour, value: 1, to: now)
+            startDate = calendar.date(
+                bySetting: .minute, value: 0, of: nextHour ?? now
+            ) ?? now
+        }
+        
+        event.startDate = startDate
+        
+        // Duration from estimated minutes or default 30min
+        let duration = TimeInterval((item.estimatedMinutes ?? 30) * 60)
+        event.endDate = startDate.addingTimeInterval(duration)
+        
+        // Add context as notes
+        var notes: [String] = []
+        if let contact = item.contactName, !contact.isEmpty {
+            notes.append(String(localized: "Contact: \(contact)"))
+        }
+        if let draft = item.aiDraft, !draft.isEmpty {
+            notes.append(draft)
+        }
+        if !notes.isEmpty {
+            event.notes = notes.joined(separator: "\n")
+        }
+        
+        // Default calendar
+        event.calendar = eventStore.defaultCalendarForNewEvents
+        
+        // 15-min reminder alert
+        event.addAlarm(EKAlarm(relativeOffset: -15 * 60))
+        
+        do {
+            try eventStore.save(event, span: .thisEvent)
+            #if DEBUG
+            print("📅 Created calendar event: \(item.content)")
+            #endif
+            return event.eventIdentifier
+        } catch {
+            #if DEBUG
+            print("❌ Failed to create calendar event: \(error)")
+            #endif
+            return nil
+        }
     }
 }
 

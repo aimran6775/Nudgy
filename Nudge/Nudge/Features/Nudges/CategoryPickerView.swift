@@ -26,9 +26,9 @@ struct CategoryPickerView: View {
     ]
     
     private let categoryEmojis = [
-        "📋", "💼", "🏠", "💪", "📚", "🎨", "🛒", "💰",
-        "🧹", "📱", "🍳", "🧘", "🎯", "🧠", "❤️", "🎵",
-        "🐾", "🌿", "✈️", "🎮", "📧", "📞", "🏥", "⚡"
+        "checklist", "briefcase.fill", "house.fill", "dumbbell.fill", "books.vertical.fill", "paintpalette.fill", "cart.fill", "dollarsign.circle.fill",
+        "sparkles", "iphone", "frying.pan.fill", "figure.mind.and.body", "target", "brain.head.profile.fill", "heart.fill", "music.note",
+        "pawprint.fill", "leaf.fill", "airplane", "gamecontroller.fill", "envelope.fill", "phone.fill", "cross.case.fill", "bolt.fill"
     ]
     
     var body: some View {
@@ -91,8 +91,9 @@ struct CategoryPickerView: View {
                                 selectedEmoji = emoji
                                 HapticService.shared.actionButtonTap()
                             } label: {
-                                Text(emoji)
-                                    .font(.system(size: 22))
+                                Image(systemName: emoji)
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(selectedEmoji == emoji ? .white : DesignTokens.textSecondary)
                                     .frame(width: 36, height: 36)
                                     .background(
                                         RoundedRectangle(cornerRadius: 8)

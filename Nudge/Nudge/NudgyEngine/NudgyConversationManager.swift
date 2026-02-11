@@ -82,7 +82,7 @@ final class NudgyConversationManager {
         let repo = NudgeRepository(modelContext: modelContext)
         let activeTasks = repo.fetchActiveQueue()
         let taskContext = activeTasks.prefix(10).map { task in
-            "- \(task.emoji ?? "📝") \(task.content)"
+            "- \(task.emoji ?? "doc.text.fill") \(task.content)"
         }.joined(separator: "\n")
         
         let systemPrompt = NudgyPersonality.brainDumpConversationPrompt(
@@ -559,7 +559,7 @@ final class NudgyConversationManager {
                 let repo = NudgeRepository(modelContext: modelContext)
                 let activeTasks = repo.fetchActiveQueue()
                 let taskContext = activeTasks.prefix(5).map { task in
-                    "\(task.emoji ?? "📝") \(task.content)"
+                    "\(task.emoji ?? "doc.text.fill") \(task.content)"
                 }.joined(separator: "\n")
                 
                 // Use Apple FM tools for task actions
@@ -659,7 +659,7 @@ final class NudgyConversationManager {
                 )
             }
             return ConversationResponse(
-                text: "You've got \(active.count) nudge\(active.count == 1 ? "" : "s") lined up! Top one: \(active.first?.emoji ?? "📌") \(active.first?.content ?? "") 💪",
+                text: "You've got \(active.count) nudge\(active.count == 1 ? "" : "s") lined up! Top one: \(active.first?.emoji ?? "pin.fill") \(active.first?.content ?? "") 💪",
                 sideEffects: [], toolCallsMade: 0
             )
         }

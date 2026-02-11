@@ -60,17 +60,7 @@ struct InlineQuickCapture: View {
                 }
                 .padding(.horizontal, DesignTokens.spacingMD)
                 .padding(.vertical, DesignTokens.spacingSM + 2)
-                .background {
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(Color.white.opacity(0.04))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                                .strokeBorder(
-                                    DesignTokens.accentActive.opacity(isFocused ? 0.3 : 0.1),
-                                    lineWidth: 0.5
-                                )
-                        )
-                }
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
                 .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
             } else {
                 // Collapsed tap target

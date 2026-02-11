@@ -24,6 +24,9 @@ struct AltitudeHUD: View {
     let levelProgress: Double
     let tasksToday: Int
 
+    /// Whether sparkles should appear around the fish badge (set on reward earn).
+    var showFishSparkle: Bool = false
+
     var body: some View {
         HStack(spacing: 10) {
             // Altitude badge (level) with progress ring
@@ -102,23 +105,31 @@ struct AltitudeHUD: View {
     // MARK: - Fish Badge
 
     private var fishBadge: some View {
-        HStack(spacing: 4) {
-            // Fish icon (replaces snowflake theming)
-            Image(systemName: "fish.fill")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color(hex: "FFB800"), Color(hex: "FF8C00")],
-                        startPoint: .top,
-                        endPoint: .bottom
+        ZStack {
+            HStack(spacing: 4) {
+                // Fish icon (replaces snowflake theming)
+                Image(systemName: "fish.fill")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(hex: "FFB800"), Color(hex: "FF8C00")],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
                     )
-                )
-                .symbolRenderingMode(.hierarchical)
+                    .symbolRenderingMode(.hierarchical)
 
-            Text("\(fishCount)")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .contentTransition(.numericText())
+                Text("\(fishCount)")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+            }
+
+            // Sparkle effect when earning fish
+            if showFishSparkle {
+                HUDSparkleCluster()
+                    .transition(.opacity)
+            }
         }
     }
 
@@ -152,6 +163,41 @@ struct AltitudeHUD: View {
             return String(format: "%.1fk", km)
         }
         return "\(meters)m"
+    }
+}
+
+// MARK: - HUD Sparkle Cluster
+
+/// Small sparkle particles that orbit the fish badge when fish are earned.
+/// Uses SparkleView from IntroVectorShapes.
+struct HUDSparkleCluster: View {
+    @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let sparkleData: [(size: CGFloat, color: Color, offset: CGSize, delay: Double)] = [
+        (8, Color(hex: "FFD700"), CGSize(width: -14, height: -10), 0.0),
+        (6, Color(hex: "FFB800"), CGSize(width: 16, height: -6), 0.15),
+        (7, Color(hex: "FF8C00"), CGSize(width: -8, height: 12), 0.3),
+        (5, .white, CGSize(width: 12, height: 10), 0.1),
+    ]
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<sparkleData.count, id: \.self) { i in
+                let data = sparkleData[i]
+                SparkleView(size: data.size, color: data.color, delay: data.delay)
+                    .offset(data.offset)
+                    .opacity(appeared ? 1.0 : 0.0)
+                    .scaleEffect(appeared ? 1.0 : 0.3)
+            }
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
+                appeared = true
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 

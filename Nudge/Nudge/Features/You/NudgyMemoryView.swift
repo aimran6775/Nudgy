@@ -47,10 +47,7 @@ struct NudgyMemoryView: View {
                         .foregroundStyle(DesignTokens.textPrimary)
                 }
                 .padding(DesignTokens.spacingMD)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.4))
-                )
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
                 
                 if memory.store.facts.isEmpty {
                     emptyState
@@ -147,10 +144,7 @@ struct NudgyMemoryView: View {
             .buttonStyle(.plain)
         }
         .padding(DesignTokens.spacingSM)
-        .background(
-            RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusChip)
-                .fill(DesignTokens.cardSurface.opacity(0.3))
-        )
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusChip))
     }
     
     // MARK: - Category Helpers

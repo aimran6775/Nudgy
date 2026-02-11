@@ -168,7 +168,7 @@ final class NotificationService: NSObject {
         
         let content = UNMutableNotificationContent()
         content.title = String(localized: "Time to nudge")
-        content.body = item.emoji.map { "\($0) \(item.content)" } ?? item.content
+        content.body = item.content
         content.userInfo = ["itemID": item.id.uuidString]
         
         // Custom notification sound (falls back to default if .caf missing)

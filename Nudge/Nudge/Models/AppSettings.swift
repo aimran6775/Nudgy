@@ -154,6 +154,20 @@ final class AppSettings {
         }
     }
     
+    /// User persona for personality adaptation (ADHD, Professional, Student, Parent, Creative)
+    var selectedPersona: UserPersona {
+        get {
+            access(keyPath: \.selectedPersona)
+            let raw = UserDefaults.standard.string(forKey: scopedKey("selectedPersona")) ?? UserPersona.adhd.rawValue
+            return UserPersona(rawValue: raw) ?? .adhd
+        }
+        set {
+            withMutation(keyPath: \.selectedPersona) {
+                UserDefaults.standard.set(newValue.rawValue, forKey: scopedKey("selectedPersona"))
+            }
+        }
+    }
+    
     // MARK: - Onboarding
     
     /// Global flag — shown before auth. Not user-scoped.

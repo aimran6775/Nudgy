@@ -18,7 +18,7 @@ enum SourceType: String, Codable, CaseIterable {
     
     var label: String {
         switch self {
-        case .voiceDump: return String(localized: "Voice Dump")
+        case .voiceDump: return String(localized: "Voice Capture")
         case .share:     return String(localized: "Shared")
         case .manual:    return String(localized: "Manual")
         }
@@ -74,26 +74,51 @@ enum TaskPriority: String, Codable, CaseIterable {
 
 /// Detected action type from AI or Share Extension
 enum ActionType: String, Codable, CaseIterable {
-    case call     = "CALL"
-    case text     = "TEXT"
-    case email    = "EMAIL"
-    case openLink = "LINK"
+    case call          = "CALL"
+    case text          = "TEXT"
+    case email         = "EMAIL"
+    case openLink      = "LINK"
+    case search        = "SEARCH"
+    case navigate      = "NAVIGATE"
+    case addToCalendar = "CALENDAR"
     
     var icon: String {
         switch self {
-        case .call:     return "phone.fill"
-        case .text:     return "message.fill"
-        case .email:    return "envelope.fill"
-        case .openLink: return "link"
+        case .call:          return "phone.fill"
+        case .text:          return "message.fill"
+        case .email:         return "envelope.fill"
+        case .openLink:      return "link"
+        case .search:        return "magnifyingglass"
+        case .navigate:      return "location.fill"
+        case .addToCalendar: return "calendar.badge.plus"
         }
     }
     
     var label: String {
         switch self {
-        case .call:     return String(localized: "Call")
-        case .text:     return String(localized: "Text")
-        case .email:    return String(localized: "Email")
-        case .openLink: return String(localized: "Open Link")
+        case .call:          return String(localized: "Call")
+        case .text:          return String(localized: "Text")
+        case .email:         return String(localized: "Email")
+        case .openLink:      return String(localized: "Open Link")
+        case .search:        return String(localized: "Search")
+        case .navigate:      return String(localized: "Navigate")
+        case .addToCalendar: return String(localized: "Add to Calendar")
+        }
+    }
+    
+    /// Whether this action opens an external view (browser, maps, etc.)
+    var isExternalAction: Bool {
+        switch self {
+        case .search, .navigate, .openLink: return true
+        default: return false
+        }
+    }
+    
+    /// Whether this action involves composing a message
+    var isCompositionAction: Bool {
+        switch self {
+        case .text, .email: return true
+        default: return false
         }
     }
 }
@@ -164,6 +189,11 @@ final class NudgeItem {
     
     /// ID of the routine this task was generated from (nil = ad-hoc task)
     var routineID: UUID?
+    
+    // MARK: Follow-Up
+    
+    /// Content of the parent task that spawned this follow-up (nil = original task)
+    var parentTaskContent: String?
     
     // MARK: Energy
     

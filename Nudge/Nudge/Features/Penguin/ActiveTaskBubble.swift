@@ -42,11 +42,8 @@ struct ActiveTaskBubble: View {
 
     private func taskCard(_ item: NudgeItem) -> some View {
         HStack(spacing: 10) {
-            // Emoji
-            if let emoji = item.emoji, !emoji.isEmpty {
-                Text(emoji)
-                    .font(.system(size: 20))
-            }
+            // Icon
+            TaskIconView(emoji: item.emoji, actionType: item.actionType, size: .small)
 
             // Task content
             VStack(alignment: .leading, spacing: 2) {
@@ -148,7 +145,7 @@ struct ActiveTaskBubble: View {
         .scaleEffect(isPressed ? 0.97 : 1.0)
         .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isPressed)
         .nudgeAccessibility(
-            label: "\(item.emoji ?? "") \(item.content), task \(queuePosition) of \(queueTotal)",
+            label: "\(item.content), task \(queuePosition) of \(queueTotal)",
             hint: String(localized: "Tap to view full task, or use the done and skip buttons"),
             traits: .isButton
         )
@@ -158,15 +155,15 @@ struct ActiveTaskBubble: View {
 
     private var allClearCard: some View {
         HStack(spacing: 8) {
-            Text("🎉")
+            Text("🐧")
                 .font(.system(size: 20))
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(String(localized: "All clear!"))
+                Text(String(localized: "Nothing right now"))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(DesignTokens.accentComplete)
 
-                Text(String(localized: "No tasks right now"))
+                Text(String(localized: "Tap Nudgy to unload your brain"))
                     .font(.system(size: 10))
                     .foregroundStyle(DesignTokens.textTertiary)
             }

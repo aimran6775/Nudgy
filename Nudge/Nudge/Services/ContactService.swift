@@ -191,7 +191,7 @@ enum ContactHelper {
             return phone
         case .email:
             return email
-        case .openLink:
+        case .openLink, .search, .navigate, .addToCalendar:
             return nil
         }
     }

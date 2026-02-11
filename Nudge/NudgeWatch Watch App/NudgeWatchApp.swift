@@ -96,7 +96,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             currentTask = WatchTask(
                 id: taskData["id"] as? String ?? "",
                 content: taskData["content"] as? String ?? "",
-                emoji: taskData["emoji"] as? String ?? "📋",
+                emoji: taskData["emoji"] as? String ?? "checklist",
                 estimatedMinutes: taskData["estimatedMinutes"] as? Int
             )
         } else {

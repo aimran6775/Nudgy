@@ -98,7 +98,19 @@ enum ActionService {
                 body: item.aiDraft
             )
         case .openLink:
-            openLink(urlString: target)
+            // Post notification to open in-app browser instead of Safari
+            if let url = URL(string: target) {
+                NotificationCenter.default.post(
+                    name: .nudgeOpenBrowser,
+                    object: nil,
+                    userInfo: [
+                        "url": url,
+                        "itemID": item.id.uuidString
+                    ]
+                )
+            } else {
+                openLink(urlString: target)
+            }
         case .text:
             // Text messages are handled via MessageComposeView (UIViewControllerRepresentable)
             // Post a notification so the view layer can present the compose sheet
@@ -111,6 +123,55 @@ enum ActionService {
                     "itemID": item.id.uuidString
                 ]
             )
+        case .search:
+            // Generate smart URL and open in-app browser
+            let actions = URLActionGenerator.generateActions(for: item.content, actionType: .search, actionTarget: target)
+            if let first = actions.first {
+                NotificationCenter.default.post(
+                    name: .nudgeOpenBrowser,
+                    object: nil,
+                    userInfo: [
+                        "url": first.url,
+                        "itemID": item.id.uuidString
+                    ]
+                )
+            }
+        case .navigate:
+            // Open in Apple Maps
+            let actions = URLActionGenerator.generateActions(for: item.content, actionType: .navigate, actionTarget: target)
+            if let first = actions.first {
+                UIApplication.shared.open(first.url)
+            }
+        case .addToCalendar:
+            // Post notification for calendar event creation
+            NotificationCenter.default.post(
+                name: .nudgeAddToCalendar,
+                object: nil,
+                userInfo: [
+                    "content": item.content,
+                    "itemID": item.id.uuidString
+                ]
+            )
+        }
+    }
+    
+    // MARK: - Smart Action Execution
+    
+    /// Execute a URLAction — opens in-app browser or system app.
+    @MainActor
+    static func executeURLAction(_ action: URLAction, for item: NudgeItem? = nil) {
+        HapticService.shared.actionButtonTap()
+        if action.openInApp {
+            NotificationCenter.default.post(
+                name: .nudgeOpenBrowser,
+                object: nil,
+                userInfo: [
+                    "url": action.url,
+                    "itemID": item?.id.uuidString ?? ""
+                ]
+            )
+        } else {
+            UIApplication.shared.open(action.url)
         }
     }
 }
@@ -138,6 +199,18 @@ extension Notification.Name {
     
     /// Posted when TTS was skipped (voice disabled) — voice conversation loop should auto-resume listening
     static let nudgyTTSSkipped = Notification.Name("nudgyTTSSkipped")
+    
+    /// Posted when a URL should be opened in the in-app browser
+    static let nudgeOpenBrowser = Notification.Name("nudgeOpenBrowser")
+    
+    /// Posted when a task should be added to the calendar
+    static let nudgeAddToCalendar = Notification.Name("nudgeAddToCalendar")
+    
+    /// Posted when Nudgy wants to execute an action from chat (draft → send)
+    static let nudgeChatExecuteAction = Notification.Name("nudgeChatExecuteAction")
+    
+    /// Posted when a follow-up nudge should be created after an action
+    static let nudgeCreateFollowUp = Notification.Name("nudgeCreateFollowUp")
 }
 
 // MARK: - Message Compose View (UIViewControllerRepresentable)

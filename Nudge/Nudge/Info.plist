@@ -22,6 +22,8 @@
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>com.tarsitgroup.nudge.viewTask</string>
+		<string>com.tarsitgroup.nudge.browseQueue</string>
+		<string>com.tarsitgroup.nudge.brainDump</string>
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>

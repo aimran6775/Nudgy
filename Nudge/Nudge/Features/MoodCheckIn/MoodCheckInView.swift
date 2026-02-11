@@ -160,10 +160,7 @@ struct MoodCheckInView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, DesignTokens.spacingLG)
-                        .background(
-                            RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                                .fill(DesignTokens.cardSurface.opacity(0.3))
-                        )
+                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
                     }
                     .buttonStyle(.plain)
                 }
@@ -193,11 +190,7 @@ struct MoodCheckInView: View {
                 .foregroundStyle(DesignTokens.textPrimary)
                 .lineLimit(3...6)
                 .padding(DesignTokens.spacingMD)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.4))
-                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-                )
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
             
             HStack(spacing: DesignTokens.spacingMD) {
                 Button {

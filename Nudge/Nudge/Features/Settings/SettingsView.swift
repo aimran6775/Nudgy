@@ -151,7 +151,7 @@ struct SettingsView: View {
                                             Text(String(localized: "Nudge Pro"))
                                                 .font(AppTheme.body.weight(.semibold))
                                                 .foregroundStyle(DesignTokens.textPrimary)
-                                            Text(String(localized: "Unlimited brain dumps, AI drafts, and more"))
+                                            Text(String(localized: "Unlimited brain unloads, AI drafts, and more"))
                                                 .font(AppTheme.caption)
                                                 .foregroundStyle(DesignTokens.textSecondary)
                                         }
@@ -225,16 +225,7 @@ struct SettingsView: View {
             
             content()
                 .padding(DesignTokens.spacingMD)
-                .background {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                            .fill(.ultraThinMaterial)
-                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                            .fill(Color.white.opacity(0.03))
-                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-                    }
-                }
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
     }
     

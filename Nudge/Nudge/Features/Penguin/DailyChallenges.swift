@@ -75,7 +75,7 @@ enum ChallengeGenerator {
             challenges.append(DailyChallenge(
                 id: "brain-dump",
                 title: String(localized: "Mind Sweep"),
-                description: String(localized: "Do a brain dump"),
+                description: String(localized: "Do a brain unload"),
                 icon: "brain.fill",
                 bonusFish: 2,
                 requirement: .brainDump

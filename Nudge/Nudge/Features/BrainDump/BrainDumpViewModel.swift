@@ -230,6 +230,8 @@ final class BrainDumpViewModel {
         
         do {
             try modelContext.save()
+            // Notify NudgesView to refresh — without this, new tasks don't appear
+            NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
         } catch {
             print("❌ Failed to save brain dump tasks: \(error)")
         }

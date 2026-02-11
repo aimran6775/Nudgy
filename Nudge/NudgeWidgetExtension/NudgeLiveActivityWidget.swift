@@ -87,8 +87,9 @@ struct NudgeLiveActivityWidget: Widget {
                 // Expanded regions
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(spacing: 4) {
-                        Text(context.state.taskEmoji)
-                            .font(.system(size: 24))
+                        Image(systemName: WidgetIconResolver.symbol(for: context.state.taskEmoji))
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(Color(hex: context.state.accentColorHex))
                         
                         // Live timer
                         Text(context.state.startedAt, style: .timer)
@@ -159,8 +160,9 @@ struct NudgeLiveActivityWidget: Widget {
                     .padding(.horizontal, 4)
                 }
             } compactLeading: {
-                Text(context.state.taskEmoji)
-                    .font(.system(size: 14))
+                Image(systemName: WidgetIconResolver.symbol(for: context.state.taskEmoji))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(hex: context.state.accentColorHex))
             } compactTrailing: {
                 // Live timer in compact trailing
                 Text(context.state.startedAt, style: .timer)
@@ -168,8 +170,9 @@ struct NudgeLiveActivityWidget: Widget {
                     .monospacedDigit()
                     .foregroundStyle(.white)
             } minimal: {
-                Text(context.state.taskEmoji)
-                    .font(.system(size: 12))
+                Image(systemName: WidgetIconResolver.symbol(for: context.state.taskEmoji))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(hex: context.state.accentColorHex))
             }
             .widgetURL(URL(string: "nudge://viewTask?id=\(context.state.taskID)"))
         }
@@ -196,8 +199,9 @@ struct NudgeLockScreenView: View {
             
             // Task content + timer
             HStack(spacing: 12) {
-                Text(state.taskEmoji)
-                    .font(.system(size: 28))
+                Image(systemName: WidgetIconResolver.symbol(for: state.taskEmoji))
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Color(hex: state.accentColorHex))
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(state.taskContent)
@@ -282,4 +286,48 @@ struct NudgeLockScreenView: View {
         taskID: UUID().uuidString,
         startedAt: .now
     )
+}
+
+// MARK: - Widget-local Emoji → SF Symbol Resolver
+
+private enum WidgetIconResolver {
+    static func symbol(for emoji: String) -> String {
+        switch emoji {
+        case "📞": return "phone.fill"
+        case "📱": return "iphone"
+        case "💬": return "message.fill"
+        case "📧", "✉️": return "envelope.fill"
+        case "📬": return "envelope.open.fill"
+        case "🎂": return "gift.fill"
+        case "💊": return "pills.fill"
+        case "🏥": return "cross.case.fill"
+        case "🦷": return "mouth.fill"
+        case "🧘": return "figure.mind.and.body"
+        case "🏋️", "🏋️‍♂️", "🏋️‍♀️": return "dumbbell.fill"
+        case "🪴", "🌱": return "leaf.fill"
+        case "🧹": return "sparkles"
+        case "🐶", "🐕", "🐾": return "pawprint.fill"
+        case "📋": return "checklist"
+        case "📊": return "chart.bar.fill"
+        case "📝": return "doc.text.fill"
+        case "✍️": return "pencil.line"
+        case "📌": return "pin.fill"
+        case "🗓️", "📅": return "calendar"
+        case "💰": return "dollarsign.circle.fill"
+        case "📖": return "book.fill"
+        case "🎬": return "play.rectangle.fill"
+        case "🎸": return "guitars.fill"
+        case "🎙️": return "mic.fill"
+        case "✈️": return "airplane"
+        case "🏖️": return "beach.umbrella.fill"
+        case "📦": return "shippingbox.fill"
+        case "🔍": return "magnifyingglass"
+        case "🎯": return "target"
+        case "🥗": return "fork.knife"
+        case "🛒": return "cart.fill"
+        case "💼": return "briefcase.fill"
+        case "🧾": return "doc.text.fill"
+        default: return "checklist"
+        }
+    }
 }

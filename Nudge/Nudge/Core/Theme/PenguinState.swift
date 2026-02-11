@@ -68,11 +68,83 @@ struct ChatMessage: Identifiable, Equatable {
     let text: String
     let timestamp: Date = .now
     
+    /// Rich attachment for actionable content in chat bubbles.
+    var attachment: ChatAttachment?
+    
     enum Role: Equatable {
         case user
         case nudgy
         case system  // Inline action confirmations ("Created task: ...")
     }
+    
+    static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
+        lhs.id == rhs.id && lhs.role == rhs.role && lhs.text == rhs.text
+    }
+}
+
+// MARK: - Chat Attachments
+
+/// Rich content that can be attached to a chat message.
+/// Enables tappable action buttons, draft previews, and task cards inline in chat.
+enum ChatAttachment: Equatable {
+    /// A draft message ready to review and send.
+    case draft(DraftAttachment)
+    
+    /// One or more tappable action buttons.
+    case actions([ActionAttachment])
+    
+    /// A task card preview (for "I created this task" confirmations).
+    case taskCard(TaskCardAttachment)
+    
+    /// URL action buttons (search Amazon, get directions, etc.)
+    case urlActions([URLActionAttachment])
+    
+    static func == (lhs: ChatAttachment, rhs: ChatAttachment) -> Bool {
+        switch (lhs, rhs) {
+        case (.draft(let a), .draft(let b)): return a == b
+        case (.taskCard(let a), .taskCard(let b)): return a == b
+        case (.actions(let a), .actions(let b)): return a == b
+        case (.urlActions(let a), .urlActions(let b)): return a == b
+        default: return false
+        }
+    }
+}
+
+/// A draft email or text for review before sending.
+struct DraftAttachment: Equatable {
+    let draftType: String     // "text" or "email"
+    let recipientName: String
+    let subject: String?
+    let body: String
+    let contactTarget: String? // resolved phone/email
+}
+
+/// A tappable action button in chat.
+struct ActionAttachment: Equatable {
+    let label: String
+    let icon: String
+    let actionType: String  // "CALL", "TEXT", "EMAIL", "SEARCH", etc.
+    let target: String
+    let contactName: String?
+}
+
+/// A task card shown inline in chat.
+struct TaskCardAttachment: Equatable {
+    let emoji: String
+    let content: String
+    let priority: String?
+    let dueDate: String?
+    let actionType: String?
+    let contactName: String?
+}
+
+/// A URL action button (search, navigate, etc.)
+struct URLActionAttachment: Equatable {
+    let label: String
+    let icon: String
+    let urlString: String
+    let domain: String
+    let openInApp: Bool
 }
 
 // MARK: - Penguin State (Shared Observable)
@@ -217,7 +289,7 @@ final class PenguinState {
         startIdleChatTimer()
     }
     
-    /// Transition to "all clear" — no tasks left.
+    /// Transition to celebration — no tasks left.
     func showAllClear(doneCount: Int) {
         self.currentTaskContent = nil
         self.currentTaskEmoji = nil
@@ -234,7 +306,7 @@ final class PenguinState {
             )
         } else {
             say(
-                String(localized: "Nothing on your plate.\nTap me to brain dump!"),
+                String(localized: "Nothing on your plate.\nTap me to unload your brain!"),
                 style: .speech,
                 autoDismiss: nil // Stays until user acts
             )
@@ -339,18 +411,25 @@ final class PenguinState {
     
     // MARK: - Idle Chatter Timer
     
-    /// Start periodic idle chatter — penguin says something every 30–60 seconds.
+    /// Non-verbal micro-moments — silent expression changes that make Nudgy feel alive.
+    private nonisolated static let microMoments: [(expression: PenguinExpression, duration: Double)] = [
+        (.thinking, 2.5),    // Nudgy ponders something
+        (.happy, 1.5),       // Brief smile at nothing
+        (.nudging, 2.0),     // Looks at something
+        (.waving, 1.0),      // Quick wave
+    ]
+    
+    /// Start periodic idle chatter — mix of verbal and silent micro-moments.
     func startIdleChatTimer() {
         stopIdleChatTimer()
         idleChatCount = 0
         
         idleChatTask = Task {
-            // Initial delay before first idle chatter
-            try? await Task.sleep(for: .seconds(Double.random(in: 25...40)))
+            // Initial delay before first idle moment
+            try? await Task.sleep(for: .seconds(Double.random(in: 20...35)))
             
             while !Task.isCancelled {
                 guard self.currentDialogue == nil else {
-                    // Wait for current dialogue to finish
                     try? await Task.sleep(for: .seconds(5))
                     continue
                 }
@@ -363,32 +442,44 @@ final class PenguinState {
                     continue
                 }
                 
-                // Max 3 idle chatters per session to avoid annoyance
-                guard self.idleChatCount < 3 else {
+                // Max 5 idle moments per session (mix of verbal + non-verbal)
+                guard self.idleChatCount < 5 else {
                     break
                 }
                 
                 self.idleChatCount += 1
                 
-                // Use NudgyEngine's dialogue engine for contextual chatter
-                let line = await NudgyDialogueEngine.shared.smartIdleChatter(
-                    currentTask: self.currentTaskContent,
-                    activeCount: self.queuePositionText != nil ? 1 : 0
-                )
-                
-                if !Task.isCancelled && self.currentDialogue == nil {
-                    self.expression = .nudging
-                    self.say(line, style: .whisper, autoDismiss: 4.0)
+                // Alternate: 60% verbal chatter, 40% silent micro-moment
+                if Double.random(in: 0...1) < 0.6 || self.idleChatCount <= 1 {
+                    // Verbal chatter
+                    let line = await NudgyDialogueEngine.shared.smartIdleChatter(
+                        currentTask: self.currentTaskContent,
+                        activeCount: self.queuePositionText != nil ? 1 : 0
+                    )
                     
-                    // Return to idle expression after
-                    try? await Task.sleep(for: .seconds(2))
-                    if self.expression == .nudging {
-                        self.expression = .idle
+                    if !Task.isCancelled && self.currentDialogue == nil {
+                        self.expression = .nudging
+                        self.say(line, style: .whisper, autoDismiss: 4.0)
+                        
+                        try? await Task.sleep(for: .seconds(2))
+                        if self.expression == .nudging {
+                            self.expression = .idle
+                        }
+                    }
+                } else {
+                    // Silent micro-moment — just an expression change
+                    let moment = Self.microMoments.randomElement()!
+                    if !Task.isCancelled && self.currentDialogue == nil {
+                        self.expression = moment.expression
+                        try? await Task.sleep(for: .seconds(moment.duration))
+                        if self.expression == moment.expression {
+                            self.expression = .idle
+                        }
                     }
                 }
                 
-                // Random delay before next chatter (45–90 seconds)
-                try? await Task.sleep(for: .seconds(Double.random(in: 45...90)))
+                // Random delay before next moment (30–70 seconds)
+                try? await Task.sleep(for: .seconds(Double.random(in: 30...70)))
             }
         }
     }

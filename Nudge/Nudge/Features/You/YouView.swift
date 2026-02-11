@@ -2,38 +2,50 @@
 //  YouView.swift
 //  Nudge
 //
-//  The "You" tab — personalization.
-//  This is how you make Nudgy yours: your name, preferences,
-//  notification style, and Pro upgrade.
-//
-//  Reframed from "Settings" to "You" — it's about personalizing
-//  Nudgy to work the way your brain works.
+//  The "You" tab — your experience page.
+//  Hero: aquarium tank with vector fish (Phase 2).
+//  Quick mood check-in + AI insights (Phase 3-4).
+//  Settings extracted to YouSettingsView (gear icon).
 //
 
 import SwiftUI
-import StoreKit
-import TipKit
 import PhotosUI
+import SwiftData
 
 struct YouView: View {
 
     @Environment(AppSettings.self) private var settings
     @Environment(PenguinState.self) private var penguinState
     @Environment(AuthSession.self) private var auth
+    @Environment(\.modelContext) private var modelContext
 
-    @State private var showPaywall = false
-    @State private var selectedVoice: String = NudgyConfig.Voice.openAIVoice
-    @State private var isPreviewingVoice = false
+    // Avatar
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var avatarService = AvatarService.shared
     @State private var showMemojiPicker = false
     @State private var showPhotoPicker = false
 
-    private let liveActivityTip = LiveActivityTip()
+    // Sheets
+    @State private var showSettings = false
+    @State private var showDailyReview = false
+    @State private var showFullCheckIn = false
+    @State private var showFullAquarium = false
+
+    // Mood (quick check-in)
+    @State private var todayMood: MoodLevel?
+    @State private var moodSaved = false
+
+    // Reward service for aquarium data
+    @State private var rewardService = RewardService.shared
+
+    // AI insight
+    @State private var moodInsightText: String?
+    @State private var isLoadingInsight = false
+
+    // Mood entries for insight generation
+    @Query(sort: \MoodEntry.loggedAt, order: .reverse) private var recentMoodEntries: [MoodEntry]
 
     var body: some View {
-        @Bindable var settings = settings
-
         NavigationStack {
             ZStack {
                 // Background
@@ -61,88 +73,66 @@ struct YouView: View {
                         avatarHeader
                             .padding(.top, DesignTokens.spacingLG)
 
-                        // Your Name — how Nudgy addresses you
-                        youSection(title: String(localized: "About You")) {
-                            VStack(alignment: .leading, spacing: DesignTokens.spacingSM) {
-                                youRow(
-                                    icon: "person.fill",
-                                    title: String(localized: "Your Name"),
-                                    subtitle: String(localized: "Nudgy uses this to personalize conversations and sign off drafted messages")
+                        // MARK: Aquarium Hero
+
+                        youSectionRaw(title: String(localized: "Your Aquarium")) {
+                            VStack(spacing: 0) {
+                                AquariumTankView(
+                                    catches: rewardService.fishCatches,
+                                    level: rewardService.level,
+                                    streak: rewardService.currentStreak,
+                                    height: 200
                                 )
-
-                                TextField(
-                                    String(localized: "First name"),
-                                    text: $settings.userName
-                                )
-                                .font(AppTheme.body)
-                                .foregroundStyle(DesignTokens.textPrimary)
-                                .padding(DesignTokens.spacingMD)
-                                .background(
-                                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusChip)
-                                        .fill(Color.white.opacity(0.05))
-                                )
-                            }
-                        }
-
-                        // Nudge Style — how often Nudgy checks in
-                        youSection(title: String(localized: "Nudge Style")) {
-                            VStack(spacing: DesignTokens.spacingMD) {
-                                youRow(
-                                    icon: "moon.fill",
-                                    title: String(localized: "Quiet Hours Start"),
-                                    value: "\(formatHour(settings.quietHoursStart))"
-                                )
-
-                                Picker(String(localized: "Start"), selection: $settings.quietHoursStart) {
-                                    ForEach(0..<24, id: \.self) { hour in
-                                        Text(formatHour(hour)).tag(hour)
-                                    }
-                                }
-                                .pickerStyle(.wheel)
-                                .frame(height: 100)
-
-                                youRow(
-                                    icon: "sunrise.fill",
-                                    title: String(localized: "Quiet Hours End"),
-                                    value: "\(formatHour(settings.quietHoursEnd))"
-                                )
-
-                                Picker(String(localized: "End"), selection: $settings.quietHoursEnd) {
-                                    ForEach(0..<24, id: \.self) { hour in
-                                        Text(formatHour(hour)).tag(hour)
-                                    }
-                                }
-                                .pickerStyle(.wheel)
-                                .frame(height: 100)
-
-                                Stepper(
-                                    value: $settings.maxDailyNudges,
-                                    in: 1...10
-                                ) {
-                                    youRow(
-                                        icon: "bell.fill",
-                                        title: String(localized: "Max Daily Nudges"),
-                                        value: "\(settings.maxDailyNudges)"
+                                .clipShape(
+                                    UnevenRoundedRectangle(
+                                        topLeadingRadius: DesignTokens.cornerRadiusCard - 4,
+                                        bottomLeadingRadius: 0,
+                                        bottomTrailingRadius: 0,
+                                        topTrailingRadius: DesignTokens.cornerRadiusCard - 4
                                     )
-                                }
-                            }
-                        }
-
-                        // Routines
-                        youSection(title: String(localized: "Routines")) {
-                            NavigationLink {
-                                RoutineListView()
-                            } label: {
-                                youRow(
-                                    icon: "arrow.trianglehead.2.counterclockwise.circle.fill",
-                                    title: String(localized: "My Routines"),
-                                    subtitle: String(localized: "Auto-generate daily tasks from repeating habits")
                                 )
+
+                                // Weekly progress bar
+                                aquariumProgressBar
+
+                                // See full aquarium link
+                                NavigationLink {
+                                    AquariumView(
+                                        catches: rewardService.fishCatches,
+                                        level: rewardService.level,
+                                        streak: rewardService.currentStreak
+                                    )
+                                } label: {
+                                    HStack {
+                                        Text(String(localized: "See Full Aquarium"))
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundStyle(DesignTokens.accentActive)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundStyle(DesignTokens.accentActive.opacity(0.6))
+                                    }
+                                    .padding(.horizontal, DesignTokens.spacingMD)
+                                    .padding(.vertical, DesignTokens.spacingSM + 2)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
 
-                        // Mood & Insights
+                        // MARK: Quick Mood Check-In
+
+                        youSection(title: String(localized: "How are you feeling?")) {
+                            quickMoodRow
+                        }
+
+                        // MARK: AI Mood Insight
+
+                        if !recentMoodEntries.isEmpty {
+                            moodInsightCard
+                        }
+
+                        // MARK: Mood History
+
                         youSection(title: String(localized: "Mood")) {
                             VStack(spacing: DesignTokens.spacingSM) {
                                 NavigationLink {
@@ -150,12 +140,12 @@ struct YouView: View {
                                 } label: {
                                     youRow(
                                         icon: "face.smiling.inverse",
-                                        title: String(localized: "Check In Now"),
-                                        subtitle: String(localized: "Log how you're feeling today")
+                                        title: String(localized: "Full Check-In"),
+                                        subtitle: String(localized: "Log mood, energy & notes")
                                     )
                                 }
                                 .buttonStyle(.plain)
-                                
+
                                 NavigationLink {
                                     MoodInsightsView()
                                 } label: {
@@ -169,155 +159,55 @@ struct YouView: View {
                             }
                         }
 
-                        // Lock Screen
-                        youSection(title: String(localized: "Lock Screen")) {
-                            VStack(spacing: DesignTokens.spacingSM) {
-                                TipView(liveActivityTip)
-                                    .tipBackground(DesignTokens.cardSurface)
+                        // MARK: Daily Review
 
-                                Toggle(isOn: $settings.liveActivityEnabled) {
-                                    youRow(
-                                        icon: "lock.circle.fill",
-                                        title: String(localized: "Show on Lock Screen"),
-                                        subtitle: String(localized: "Current task on Dynamic Island & Lock Screen")
-                                    )
-                                }
-                                .tint(DesignTokens.accentActive)
-                                .onChange(of: settings.liveActivityEnabled) { _, newValue in
-                                    if newValue {
-                                        Task { await LiveActivityTip.liveActivityEnabled.donate() }
-                                    }
-                                }
-                            }
-                        }
-
-                        youSection(title: String(localized: "Nudgy")) {
-                            VStack(spacing: DesignTokens.spacingMD) {
-                                // Nudgy's Memory
-                                NavigationLink {
-                                    NudgyMemoryView()
-                                } label: {
-                                    youRow(
-                                        icon: "brain.head.profile.fill",
-                                        title: String(localized: "Nudgy's Memory"),
-                                        subtitle: String(localized: "See what Nudgy remembers about you")
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                
-                                Divider()
-                                    .overlay(Color.white.opacity(0.06))
-                                
-                                // Voice on/off toggle
-                                Toggle(isOn: Binding(
-                                    get: { NudgyVoiceOutput.shared.isEnabled },
-                                    set: { NudgyVoiceOutput.shared.isEnabled = $0 }
-                                )) {
-                                    youRow(
-                                        icon: "waveform.circle.fill",
-                                        title: String(localized: "Nudgy's Voice"),
-                                        subtitle: String(localized: "Nudgy reads responses aloud")
-                                    )
-                                }
-                                .tint(DesignTokens.accentActive)
-                                
-                                // Voice picker (only when voice is on)
-                                if NudgyVoiceOutput.shared.isEnabled {
-                                    Divider()
-                                        .overlay(Color.white.opacity(0.06))
-                                    
-                                    VStack(alignment: .leading, spacing: DesignTokens.spacingSM) {
-                                        Text(String(localized: "Voice"))
-                                            .font(AppTheme.caption.weight(.semibold))
-                                            .foregroundStyle(DesignTokens.textSecondary)
-                                        
-                                        // Voice options grid
-                                        LazyVGrid(columns: [
-                                            GridItem(.flexible()),
-                                            GridItem(.flexible()),
-                                            GridItem(.flexible())
-                                        ], spacing: DesignTokens.spacingSM) {
-                                            ForEach(NudgyConfig.Voice.availableVoices, id: \.id) { voice in
-                                                voiceButton(voice: voice)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Pro
-                        if !settings.isPro {
-                            youSection(title: String(localized: "Upgrade")) {
-                                Button {
-                                    showPaywall = true
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: DesignTokens.spacingXS) {
-                                            Text(String(localized: "Nudge Pro"))
-                                                .font(AppTheme.body.weight(.semibold))
-                                                .foregroundStyle(DesignTokens.textPrimary)
-                                            Text(String(localized: "Unlimited brain dumps, AI drafts, and more"))
-                                                .font(AppTheme.caption)
-                                                .foregroundStyle(DesignTokens.textSecondary)
-                                        }
-                                        Spacer()
-                                        Text(PurchaseService.shared.monthlyProduct?.displayPrice ?? String(localized: "Upgrade"))
-                                            .font(AppTheme.body.weight(.bold))
-                                            .foregroundStyle(DesignTokens.accentActive)
-                                    }
-                                    .padding(DesignTokens.spacingMD)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                                            .fill(DesignTokens.accentActive.opacity(0.1))
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                                                    .strokeBorder(DesignTokens.accentActive.opacity(0.3), lineWidth: 1)
-                                            )
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-
-                        // About
-                        youSection(title: String(localized: "About")) {
-                            VStack(spacing: DesignTokens.spacingSM) {
-                                youRow(
-                                    icon: "info.circle.fill",
-                                    title: String(localized: "Version"),
-                                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-                                )
-
-                                Button {
-                                    if let url = URL(string: "mailto:support@nudgeapp.com") {
-                                        UIApplication.shared.open(url)
-                                    }
-                                } label: {
-                                    youRow(
-                                        icon: "envelope.fill",
-                                        title: String(localized: "Contact Support")
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-
-                        // Account
-                        youSection(title: String(localized: "Account")) {
+                        youSection(title: String(localized: "Daily Review")) {
                             Button {
-                                auth.signOut()
+                                showDailyReview = true
                             } label: {
                                 youRow(
-                                    icon: "rectangle.portrait.and.arrow.right",
-                                    title: String(localized: "Sign Out"),
-                                    subtitle: String(localized: "Switch to a different account")
+                                    icon: "moon.stars.fill",
+                                    title: String(localized: "Review My Day"),
+                                    subtitle: String(localized: "See what you accomplished and plan tomorrow")
                                 )
                             }
                             .buttonStyle(.plain)
                         }
 
-                        // Spacer for bottom padding
+                        // MARK: Upgrade (subtle banner if not Pro)
+
+                        if !settings.isPro {
+                            youSection(title: String(localized: "Upgrade")) {
+                                Button {
+                                    showSettings = true
+                                } label: {
+                                    HStack(spacing: DesignTokens.spacingMD) {
+                                        Image(systemName: "star.fill")
+                                            .font(.system(size: 16))
+                                            .foregroundStyle(.yellow)
+                                            .frame(width: 24)
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(String(localized: "Nudge Pro"))
+                                                .font(AppTheme.body.weight(.semibold))
+                                                .foregroundStyle(DesignTokens.textPrimary)
+                                            Text(String(localized: "Unlock unlimited brain unloads & more"))
+                                                .font(AppTheme.footnote)
+                                                .foregroundStyle(DesignTokens.textSecondary)
+                                        }
+
+                                        Spacer()
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(DesignTokens.textTertiary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        // Bottom padding
                         Spacer(minLength: DesignTokens.spacingXXXL)
                     }
                     .padding(.horizontal, DesignTokens.spacingLG)
@@ -326,10 +216,26 @@ struct YouView: View {
             .navigationTitle(String(localized: "You"))
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(DesignTokens.textSecondary)
+                    }
+                    .nudgeAccessibility(
+                        label: String(localized: "Settings"),
+                        hint: String(localized: "Open app settings"),
+                        traits: .isButton
+                    )
+                }
+            }
         }
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
+        .sheet(isPresented: $showSettings) {
+            YouSettingsView()
         }
         .sheet(isPresented: $showMemojiPicker) {
             MemojiPickerView { memojiImage in
@@ -337,9 +243,14 @@ struct YouView: View {
             }
             .presentationDetents([.large])
         }
+        .sheet(isPresented: $showDailyReview) {
+            DailyReviewView()
+        }
         .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
         .onAppear {
             avatarService.loadFromMeCard()
+            loadTodayMood()
+            loadMoodInsight()
         }
         .onChange(of: selectedPhotoItem) { _, newItem in
             guard let newItem else { return }
@@ -354,7 +265,7 @@ struct YouView: View {
     }
 
     // MARK: - Avatar Header
-    
+
     private var avatarHeader: some View {
         VStack(spacing: DesignTokens.spacingSM) {
             Menu {
@@ -363,13 +274,13 @@ struct YouView: View {
                 } label: {
                     Label(String(localized: "Choose Memoji"), systemImage: "face.smiling")
                 }
-                
+
                 Button {
                     showPhotoPicker = true
                 } label: {
                     Label(String(localized: "Choose Photo"), systemImage: "photo.on.rectangle")
                 }
-                
+
                 if avatarService.avatarImage != nil {
                     Divider()
                     Button(role: .destructive) {
@@ -409,7 +320,7 @@ struct YouView: View {
                                 }
                             }
                     }
-                    
+
                     // Edit badge
                     Circle()
                         .fill(DesignTokens.cardSurface)
@@ -432,7 +343,7 @@ struct YouView: View {
                 hint: String(localized: "Tap to choose a photo or Memoji"),
                 traits: .isButton
             )
-            
+
             // Name below avatar
             if !settings.userName.isEmpty {
                 Text(settings.userName)
@@ -442,9 +353,288 @@ struct YouView: View {
         }
     }
 
+    // MARK: - Aquarium Progress Bar
+
+    private var aquariumProgressBar: some View {
+        let weekCatches = weeklyFishCount
+        let cap = 12
+        let progress = min(Double(weekCatches) / Double(cap), 1.0)
+
+        return VStack(spacing: 4) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.06))
+                        .frame(height: 6)
+
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(hex: "4FC3F7"),
+                                    Color(hex: "00B8D4")
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: geo.size.width * progress, height: 6)
+                }
+            }
+            .frame(height: 6)
+
+            HStack {
+                Text(String(localized: "\(weekCatches) fish this week"))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(DesignTokens.textTertiary)
+                Spacer()
+                Text(String(localized: "Lv.\(rewardService.level)"))
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(hex: "FFD54F"))
+            }
+        }
+        .padding(.horizontal, DesignTokens.spacingMD)
+        .padding(.vertical, DesignTokens.spacingSM)
+    }
+
+    private var weeklyFishCount: Int {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let weekStart = calendar.dateInterval(of: .weekOfYear, for: now)?.start else {
+            return rewardService.fishCatches.count
+        }
+        return rewardService.fishCatches.filter { $0.caughtAt >= weekStart }.count
+    }
+
+    // MARK: - Quick Mood Row
+
+    private var quickMoodRow: some View {
+        VStack(spacing: DesignTokens.spacingSM) {
+            if moodSaved, let mood = todayMood {
+                // Already checked in today — show summary
+                HStack(spacing: DesignTokens.spacingMD) {
+                    Text(mood.emoji)
+                        .font(.system(size: 32))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(String(localized: "Today's mood: \(mood.label)"))
+                            .font(AppTheme.body.weight(.medium))
+                            .foregroundStyle(DesignTokens.textPrimary)
+                        Text(String(localized: "Tap an emoji to update"))
+                            .font(AppTheme.footnote)
+                            .foregroundStyle(DesignTokens.textTertiary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(mood.color)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
+
+            // Emoji row — always visible for 1-tap re-log
+            HStack(spacing: 0) {
+                ForEach(MoodLevel.allCases, id: \.self) { mood in
+                    Button {
+                        quickLogMood(mood)
+                    } label: {
+                        VStack(spacing: 3) {
+                            Text(mood.emoji)
+                                .font(.system(size: 28))
+                                .scaleEffect(todayMood == mood ? 1.15 : 1.0)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: todayMood)
+
+                            Text(mood.label)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(
+                                    todayMood == mood
+                                        ? mood.color
+                                        : DesignTokens.textTertiary
+                                )
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, DesignTokens.spacingSM)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(
+                                    todayMood == mood
+                                        ? mood.color.opacity(0.12)
+                                        : Color.clear
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .nudgeAccessibility(
+                        label: mood.label,
+                        hint: String(localized: "Quick log \(mood.label) mood"),
+                        traits: .isButton
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - AI Mood Insight Card
+
+    private var moodInsightCard: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.spacingSM) {
+            Text(String(localized: "Mood Insight"))
+                .font(AppTheme.caption.weight(.semibold))
+                .foregroundStyle(DesignTokens.textSecondary)
+                .textCase(.uppercase)
+
+            VStack(alignment: .leading, spacing: DesignTokens.spacingMD) {
+                HStack(spacing: DesignTokens.spacingSM) {
+                    Image(systemName: "brain.head.profile.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color(hex: "BA68C8"), Color(hex: "7B1FA2")],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+
+                    Text(String(localized: "AI-Powered"))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(DesignTokens.textTertiary)
+
+                    Spacer()
+
+                    if isLoadingInsight {
+                        ProgressView()
+                            .tint(DesignTokens.textTertiary)
+                            .scaleEffect(0.7)
+                    }
+                }
+
+                if isLoadingInsight {
+                    // Shimmer placeholder
+                    insightShimmer
+                } else if let insight = moodInsightText {
+                    Text(insight)
+                        .font(AppTheme.body)
+                        .foregroundStyle(DesignTokens.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(.opacity)
+                } else {
+                    Text(String(localized: "Check in a few more times to unlock AI mood insights."))
+                        .font(AppTheme.footnote)
+                        .foregroundStyle(DesignTokens.textTertiary)
+                }
+            }
+            .padding(DesignTokens.spacingMD)
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
+        }
+    }
+
+    private var insightShimmer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(0..<3, id: \.self) { i in
+                ShimmerRect(maxWidth: i == 2 ? 140.0 : nil)
+            }
+        }
+    }
+
+    // MARK: - Mood Helpers
+
+    private func loadTodayMood() {
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+        if let todayEntry = recentMoodEntries.first(where: { calendar.isDate($0.loggedAt, inSameDayAs: todayStart) }) {
+            todayMood = todayEntry.moodLevel
+            moodSaved = true
+        }
+    }
+
+    private func quickLogMood(_ mood: MoodLevel) {
+        HapticService.shared.actionButtonTap()
+
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+
+        // Check if there's already a mood entry for today — update it
+        if let existing = recentMoodEntries.first(where: { calendar.isDate($0.loggedAt, inSameDayAs: todayStart) }) {
+            existing.moodLevel = mood
+            existing.loggedAt = Date()
+        } else {
+            // Create new
+            let entry = MoodEntry(mood: mood)
+            modelContext.insert(entry)
+        }
+
+        withAnimation(AnimationConstants.springSmooth) {
+            todayMood = mood
+            moodSaved = true
+        }
+
+        // Refresh insight after mood change
+        loadMoodInsight()
+    }
+
+    // MARK: - AI Insight
+
+    private func loadMoodInsight() {
+        // Need at least 3 entries for meaningful insight
+        guard recentMoodEntries.count >= 3 else { return }
+
+        // Check cache — only refresh once per day
+        let cacheKey = "moodInsight_\(formattedToday)"
+        if let cached = UserDefaults.standard.string(forKey: cacheKey) {
+            moodInsightText = cached
+            return
+        }
+
+        isLoadingInsight = true
+
+        Task {
+            let prompt = buildInsightPrompt()
+            let response = await NudgyConversationManager.shared.generateOneShotResponse(prompt: prompt)
+
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    isLoadingInsight = false
+                    moodInsightText = response
+                }
+
+                // Cache for the day
+                if let response {
+                    UserDefaults.standard.set(response, forKey: cacheKey)
+                }
+            }
+        }
+    }
+
+    private func buildInsightPrompt() -> String {
+        let recent = Array(recentMoodEntries.prefix(7))
+        let entries = recent.map { entry in
+            let mood = entry.moodLevel
+            let day = entry.loggedAt.formatted(.dateTime.weekday(.wide))
+            let tasks = entry.tasksCompletedThatDay
+            return "\(day): \(mood.label) (\(mood.emoji)), \(tasks) tasks done"
+        }.joined(separator: "\n")
+
+        return """
+        You are Nudgy, a warm supportive ADHD productivity companion (a penguin!). \
+        Analyze this user's recent mood entries and give a brief, encouraging 1-2 sentence insight. \
+        Be specific to the data. Don't use bullet points. Keep it conversational and kind.
+
+        Recent mood data:
+        \(entries)
+
+        Respond with just the insight text, nothing else.
+        """
+    }
+
+    private var formattedToday: String {
+        Date().formatted(.dateTime.year().month().day())
+    }
+
     // MARK: - Reusable Components
 
-    private func youSection(title: String, @ViewBuilder content: () -> some View) -> some View {
+    func youSection(title: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: DesignTokens.spacingSM) {
             Text(title)
                 .font(AppTheme.caption.weight(.semibold))
@@ -453,20 +643,24 @@ struct YouView: View {
 
             content()
                 .padding(DesignTokens.spacingMD)
-                .background {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                            .fill(.ultraThinMaterial)
-                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                            .fill(Color.white.opacity(0.03))
-                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-                    }
-                }
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
     }
 
-    private func youRow(
+    /// Section variant without inner padding — for edge-to-edge content like the aquarium tank.
+    func youSectionRaw(title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: DesignTokens.spacingSM) {
+            Text(title)
+                .font(AppTheme.caption.weight(.semibold))
+                .foregroundStyle(DesignTokens.textSecondary)
+                .textCase(.uppercase)
+
+            content()
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
+        }
+    }
+
+    func youRow(
         icon: String,
         title: String,
         subtitle: String? = nil,
@@ -501,66 +695,26 @@ struct YouView: View {
         }
         .accessibilityElement(children: .combine)
     }
+}
 
-    private func formatHour(_ hour: Int) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h a"
-        let date = Calendar.current.date(from: DateComponents(hour: hour)) ?? Date()
-        return formatter.string(from: date)
-    }
-    
-    // MARK: - Voice Button
-    
-    private func voiceButton(voice: (id: String, name: String, description: String)) -> some View {
-        let isSelected = selectedVoice == voice.id
-        
-        return Button {
-            selectedVoice = voice.id
-            NudgyConfig.Voice.openAIVoice = voice.id
-            
-            // Preview the voice
-            isPreviewingVoice = true
-            NudgyVoiceOutput.shared.speakReaction("Hey! I'm Nudgy!")
-            
-            Task {
-                try? await Task.sleep(for: .seconds(3))
-                isPreviewingVoice = false
-            }
-        } label: {
-            VStack(spacing: 4) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundStyle(isSelected ? DesignTokens.accentActive : DesignTokens.textTertiary)
-                
-                Text(voice.name)
-                    .font(AppTheme.caption.weight(.semibold))
-                    .foregroundStyle(isSelected ? DesignTokens.textPrimary : DesignTokens.textSecondary)
-                
-                Text(voice.description)
-                    .font(.system(size: 10))
-                    .foregroundStyle(DesignTokens.textTertiary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, DesignTokens.spacingSM)
-            .background(
-                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusButton)
-                    .fill(isSelected ? DesignTokens.accentActive.opacity(0.12) : Color.clear)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusButton)
-                            .strokeBorder(
-                                isSelected ? DesignTokens.accentActive.opacity(0.4) : Color.white.opacity(0.06),
-                                lineWidth: 1
-                            )
-                    )
+// MARK: - Shimmer Loading Rect
+
+/// A simple pulsing placeholder rect for loading states.
+private struct ShimmerRect: View {
+    var maxWidth: CGFloat?
+
+    @State private var phase: Bool = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.white.opacity(phase ? 0.08 : 0.03))
+            .frame(height: 12)
+            .frame(maxWidth: maxWidth ?? .infinity)
+            .animation(
+                .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                value: phase
             )
-        }
-        .buttonStyle(.plain)
-        .nudgeAccessibility(
-            label: "\(voice.name) voice, \(voice.description)",
-            hint: isSelected
-                ? String(localized: "Currently selected")
-                : String(localized: "Double tap to select and preview")
-        )
+            .onAppear { phase = true }
     }
 }
 
@@ -570,4 +724,5 @@ struct YouView: View {
     YouView()
         .environment(AppSettings())
         .environment(PenguinState())
+        .environment(AuthSession())
 }

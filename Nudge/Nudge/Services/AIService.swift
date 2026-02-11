@@ -26,7 +26,7 @@ struct SplitTask {
     @Guide(description: "Short clear task, max 8 words")
     var task: String
     
-    @Guide(description: "One relevant emoji for the task")
+    @Guide(description: "An SF Symbol name that best represents this task, e.g. phone.fill, envelope.fill, cart.fill, book.fill, pawprint.fill, checklist")
     var emoji: String
     
     @Guide(description: "CALL if task involves calling, TEXT if texting/messaging, EMAIL if emailing, empty string if none")
@@ -62,7 +62,7 @@ struct TaskBreakdown {
     @Guide(description: "Brief reasoning about why this task feels overwhelming and how to approach it")
     var reasoning: String
     
-    @Guide(description: "The smaller sub-tasks, each max 8 words with one emoji", .count(2...6))
+    @Guide(description: "The smaller sub-tasks, each max 8 words with an SF Symbol name", .count(2...6))
     var steps: [SplitTask]
     
     @Guide(description: "An encouraging one-liner for the user, max 12 words")
@@ -75,7 +75,7 @@ struct NaturalTaskExtraction {
     @Guide(description: "The clear, actionable task text (max 8 words)")
     var taskContent: String
     
-    @Guide(description: "One relevant emoji")
+    @Guide(description: "An SF Symbol name that represents this task, e.g. phone.fill, envelope.fill, cart.fill")
     var emoji: String
     
     @Guide(description: "CALL, TEXT, EMAIL, or empty string")
@@ -147,7 +147,7 @@ final class AIService {
         // Single word/phrase — skip AI, return as-is
         let wordCount = transcript.split(separator: " ").count
         if wordCount <= 4 {
-            return [SplitTask(task: transcript, emoji: "📝", action: "", contact: "", actionTarget: "")]
+            return [SplitTask(task: transcript, emoji: "doc.text.fill", action: "", contact: "", actionTarget: "")]
         }
         
         // Check model availability — fall back gracefully
@@ -263,7 +263,7 @@ final class AIService {
             // Fallback: treat everything as a task
             return NaturalTaskExtraction(
                 taskContent: String(naturalInput.prefix(80)),
-                emoji: "📝",
+                emoji: "doc.text.fill",
                 actionType: "",
                 contactName: "",
                 actionTarget: "",
@@ -300,7 +300,7 @@ final class AIService {
         defer { isGenerating = false }
         
         let taskList = tasks.prefix(8).map { task in
-            var line = "- \(task.emoji ?? "📝") \(task.content)"
+            var line = "- \(task.emoji ?? "doc.text.fill") \(task.content)"
             if task.isOverdue { line += " [OVERDUE]" }
             else if task.isStale { line += " [stale \(task.ageInDays)d]" }
             return line
@@ -396,7 +396,7 @@ final class AIService {
     // MARK: - Helpers
     
     private func fallbackSingleTask(_ transcript: String) -> [SplitTask] {
-        [SplitTask(task: transcript.truncated(to: 80), emoji: "📝", action: "", contact: "", actionTarget: "")]
+        [SplitTask(task: transcript.truncated(to: 80), emoji: "doc.text.fill", action: "", contact: "", actionTarget: "")]
     }
 }
 

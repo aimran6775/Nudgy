@@ -85,6 +85,40 @@ final class NudgyWardrobe {
     /// Comma-separated milestone IDs already celebrated (e.g. "10,25,50,100")
     var celebratedMilestonesRaw: String
     
+    // MARK: Fish Economy
+    
+    /// JSON-encoded array of FishCatch records.
+    var fishCatchesJSON: String
+    
+    /// Decoded fish catches (computed, not stored).
+    var fishCatches: [FishCatch] {
+        get {
+            guard !fishCatchesJSON.isEmpty,
+                  let data = fishCatchesJSON.data(using: .utf8),
+                  let catches = try? JSONDecoder().decode([FishCatch].self, from: data) else {
+                return []
+            }
+            return catches
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue),
+               let json = String(data: data, encoding: .utf8) {
+                fishCatchesJSON = json
+            }
+        }
+    }
+    
+    /// Record a new fish catch.
+    func addFishCatch(_ catch_: FishCatch) {
+        var current = fishCatches
+        current.append(catch_)
+        // Keep only last 200 to avoid bloating
+        if current.count > 200 {
+            current = Array(current.suffix(200))
+        }
+        fishCatches = current
+    }
+    
     // MARK: Init
     
     init() {
@@ -104,6 +138,7 @@ final class NudgyWardrobe {
         self.freezeUsedToday = false
         self.lastFreezeEarnedDate = nil
         self.celebratedMilestonesRaw = ""
+        self.fishCatchesJSON = ""
     }
     
     // MARK: - Computed Properties

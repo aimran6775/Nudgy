@@ -205,8 +205,9 @@ struct NudgeLockScreenView: View {
             
             // Task content + live timer
             HStack(spacing: 12) {
-                Text(state.taskEmoji)
-                    .font(.system(size: 28))
+                Image(systemName: TaskIconResolver.resolveSymbol(for: state.taskEmoji))
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(Color(hex: state.accentColorHex))
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(state.taskContent)
@@ -244,8 +245,9 @@ struct NudgeCompactLeadingView: View {
     let state: NudgeActivityAttributes.ContentState
     
     var body: some View {
-        Text(state.taskEmoji)
-            .font(.system(size: 16))
+        Image(systemName: TaskIconResolver.resolveSymbol(for: state.taskEmoji))
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
     }
 }
 
@@ -267,8 +269,9 @@ struct NudgeExpandedView: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
-                Text(state.taskEmoji)
-                    .font(.system(size: 24))
+                Image(systemName: TaskIconResolver.resolveSymbol(for: state.taskEmoji))
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Color(hex: state.accentColorHex))
                 
                 Text(state.taskContent)
                     .font(.system(size: 15, weight: .medium))

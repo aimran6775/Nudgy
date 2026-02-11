@@ -273,7 +273,7 @@ struct AllItemsView: View {
             } label: {
                 HStack(spacing: DesignTokens.spacingSM) {
                     Image(systemName: "mic.fill")
-                    Text(String(localized: "Start a Brain Dump"))
+                    Text(String(localized: "Start a Brain Unload"))
                 }
                 .font(AppTheme.body.weight(.semibold))
                 .foregroundStyle(.white)
@@ -286,8 +286,8 @@ struct AllItemsView: View {
             }
             .buttonStyle(.plain)
             .nudgeAccessibility(
-                label: String(localized: "Start a brain dump"),
-                hint: String(localized: "Opens the voice brain dump recorder"),
+                label: String(localized: "Start a brain unload"),
+                hint: String(localized: "Opens the voice brain unload recorder"),
                 traits: .isButton
             )
             
@@ -388,15 +388,8 @@ struct AllItemsView: View {
                 )
             }
             .padding(DesignTokens.spacingLG)
-            .background(
-                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                    .fill(DesignTokens.cardSurface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                            .strokeBorder(DesignTokens.cardBorder, lineWidth: DesignTokens.cardBorderWidth)
-                    )
-                    .shadow(color: .black.opacity(0.5), radius: 16, y: 4)
-            )
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
+            .shadow(color: .black.opacity(0.4), radius: 16, y: 4)
             .padding(.horizontal, DesignTokens.spacingLG)
             .padding(.bottom, 40)
         }

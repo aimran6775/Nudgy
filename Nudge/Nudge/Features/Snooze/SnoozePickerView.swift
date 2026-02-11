@@ -51,10 +51,7 @@ struct SnoozePickerView: View {
                 VStack(spacing: DesignTokens.spacingLG) {
                     // Task preview
                     HStack(spacing: DesignTokens.spacingSM) {
-                        if let emoji = item.emoji {
-                            Text(emoji)
-                                .font(AppTheme.emoji(size: 18))
-                        }
+                        TaskIconView(emoji: item.emoji, actionType: item.actionType, size: .small)
                         Text(item.content)
                             .font(AppTheme.body)
                             .foregroundStyle(DesignTokens.textPrimary)

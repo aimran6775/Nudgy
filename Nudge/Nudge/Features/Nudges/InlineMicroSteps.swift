@@ -145,18 +145,7 @@ struct InlineMicroSteps: View {
                 }
             }
             .padding(DesignTokens.spacingMD)
-            .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.25))
-                    
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .strokeBorder(
-                            DesignTokens.accentActive.opacity(0.08),
-                            lineWidth: 0.5
-                        )
-                }
-            }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
         .onAppear { appeared = true }
         .nudgeAccessibilityElement(
@@ -208,9 +197,8 @@ struct MicroStepRow: View {
                 }
                 .scaleEffect(step.isComplete ? 1.0 : 0.95)
                 
-                // Emoji
-                Text(step.emoji)
-                    .font(.system(size: 14))
+                // Icon
+                StepIconView(emoji: step.emoji, size: 14)
                 
                 // Content
                 Text(step.content)
@@ -230,7 +218,7 @@ struct MicroStepRow: View {
         }
         .buttonStyle(.plain)
         .nudgeAccessibility(
-            label: "\(step.emoji) \(step.content)",
+            label: step.content,
             hint: step.isComplete
                 ? String(localized: "Completed. Double-tap to uncheck")
                 : String(localized: "Double-tap to check off"),
@@ -268,65 +256,65 @@ enum MicroStepGenerator {
     /// Instant, no AI needed — always works offline.
     private static func heuristicSteps(for taskContent: String, emoji: String?) -> [MicroStep] {
         let lower = taskContent.lowercased()
-        let fallbackEmoji = emoji ?? "📌"
+        let fallbackEmoji = emoji ?? "pin.fill"
         
         // Contact-based tasks
         if lower.contains("call") || lower.contains("phone") {
             return [
-                MicroStep(content: String(localized: "Open phone app"), emoji: "📱"),
-                MicroStep(content: String(localized: "Find the contact"), emoji: "🔍"),
-                MicroStep(content: String(localized: "Press call"), emoji: "📞"),
+                MicroStep(content: String(localized: "Open phone app"), emoji: "iphone"),
+                MicroStep(content: String(localized: "Find the contact"), emoji: "magnifyingglass"),
+                MicroStep(content: String(localized: "Press call"), emoji: "phone.fill"),
             ]
         }
         
         if lower.contains("text") || lower.contains("message") {
             return [
-                MicroStep(content: String(localized: "Open messages"), emoji: "💬"),
-                MicroStep(content: String(localized: "Type one sentence"), emoji: "⌨️"),
-                MicroStep(content: String(localized: "Hit send"), emoji: "📤"),
+                MicroStep(content: String(localized: "Open messages"), emoji: "message.fill"),
+                MicroStep(content: String(localized: "Type one sentence"), emoji: "keyboard"),
+                MicroStep(content: String(localized: "Hit send"), emoji: "paperplane.fill"),
             ]
         }
         
         if lower.contains("email") {
             return [
-                MicroStep(content: String(localized: "Open email app"), emoji: "📧"),
-                MicroStep(content: String(localized: "Write subject line"), emoji: "✏️"),
-                MicroStep(content: String(localized: "Send it"), emoji: "📤"),
+                MicroStep(content: String(localized: "Open email app"), emoji: "envelope.fill"),
+                MicroStep(content: String(localized: "Write subject line"), emoji: "pencil"),
+                MicroStep(content: String(localized: "Send it"), emoji: "paperplane.fill"),
             ]
         }
         
         // Shopping/errands
         if lower.contains("buy") || lower.contains("pick up") || lower.contains("get") {
             return [
-                MicroStep(content: String(localized: "Add to shopping list"), emoji: "📝"),
-                MicroStep(content: String(localized: "Go to the store"), emoji: "🏪"),
-                MicroStep(content: String(localized: "Grab it & checkout"), emoji: "✅"),
+                MicroStep(content: String(localized: "Add to shopping list"), emoji: "doc.text.fill"),
+                MicroStep(content: String(localized: "Go to the store"), emoji: "bag.fill"),
+                MicroStep(content: String(localized: "Grab it & checkout"), emoji: "checkmark.circle.fill"),
             ]
         }
         
         // Scheduling
         if lower.contains("schedule") || lower.contains("book") || lower.contains("appointment") {
             return [
-                MicroStep(content: String(localized: "Look up the number"), emoji: "🔍"),
-                MicroStep(content: String(localized: "Pick a date/time"), emoji: "📅"),
-                MicroStep(content: String(localized: "Confirm booking"), emoji: "✅"),
+                MicroStep(content: String(localized: "Look up the number"), emoji: "magnifyingglass"),
+                MicroStep(content: String(localized: "Pick a date/time"), emoji: "calendar"),
+                MicroStep(content: String(localized: "Confirm booking"), emoji: "checkmark.circle.fill"),
             ]
         }
         
         // Reading/studying
         if lower.contains("read") || lower.contains("study") || lower.contains("article") {
             return [
-                MicroStep(content: String(localized: "Open it"), emoji: "📖"),
-                MicroStep(content: String(localized: "Read just the first paragraph"), emoji: "👀"),
-                MicroStep(content: String(localized: "Decide: keep going or save"), emoji: "🤔"),
+                MicroStep(content: String(localized: "Open it"), emoji: "book.fill"),
+                MicroStep(content: String(localized: "Read just the first paragraph"), emoji: "eye.fill"),
+                MicroStep(content: String(localized: "Decide: keep going or save"), emoji: "questionmark.circle.fill"),
             ]
         }
         
         // Generic fallback — the ADHD "just start" pattern
         return [
-            MicroStep(content: String(localized: "Open what you need"), emoji: "📂"),
+            MicroStep(content: String(localized: "Open what you need"), emoji: "folder.fill"),
             MicroStep(content: String(localized: "Do the first tiny piece"), emoji: fallbackEmoji),
-            MicroStep(content: String(localized: "You're done enough for now"), emoji: "🐧"),
+            MicroStep(content: String(localized: "You're done enough for now"), emoji: "checkmark.seal.fill"),
         ]
     }
 }
@@ -337,7 +325,7 @@ enum MicroStepGenerator {
     ZStack {
         Color.black.ignoresSafeArea()
         
-        let item = NudgeItem(content: "Email landlord about lease", emoji: "📧", sortOrder: 1)
+        let item = NudgeItem(content: "Email landlord about lease", emoji: "envelope.fill", sortOrder: 1)
         
         InlineMicroSteps(
             parentItem: item,
@@ -355,14 +343,14 @@ enum MicroStepGenerator {
     ZStack {
         Color.black.ignoresSafeArea()
         
-        let item = NudgeItem(content: "Email landlord about lease", emoji: "📧", sortOrder: 1)
+        let item = NudgeItem(content: "Email landlord about lease", emoji: "envelope.fill", sortOrder: 1)
         
         InlineMicroSteps(
             parentItem: item,
             steps: .constant([
-                MicroStep(content: "Open email app", emoji: "📧"),
-                MicroStep(content: "Write subject line", emoji: "✏️"),
-                MicroStep(content: "Send it", emoji: "📤"),
+                MicroStep(content: "Open email app", emoji: "envelope.fill"),
+                MicroStep(content: "Write subject line", emoji: "pencil"),
+                MicroStep(content: "Send it", emoji: "paperplane.fill"),
             ]),
             isLoading: false,
             onAllComplete: {},

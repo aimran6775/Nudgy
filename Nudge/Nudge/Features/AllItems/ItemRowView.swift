@@ -24,11 +24,8 @@ struct ItemRowView: View {
                     .fill(accentColor)
                     .frame(width: 8, height: 8)
                 
-                // Emoji
-                if let emoji = item.emoji {
-                    Text(emoji)
-                        .font(AppTheme.emoji(size: 18))
-                }
+                // Icon
+                TaskIconView(emoji: item.emoji, actionType: item.actionType, size: .small)
                 
                 // Content
                 VStack(alignment: .leading, spacing: DesignTokens.spacingXS) {
@@ -82,10 +79,7 @@ struct ItemRowView: View {
                     .foregroundStyle(DesignTokens.textTertiary)
             }
             .padding(DesignTokens.spacingMD)
-            .background(
-                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                    .fill(DesignTokens.cardSurface.opacity(DesignTokens.cardOpacity))
-            )
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
         .buttonStyle(.plain)
         .nudgeAccessibility(

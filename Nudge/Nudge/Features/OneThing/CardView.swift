@@ -94,12 +94,9 @@ struct CardView: View {
             showPulse: item.isStale
         ) {
             VStack(alignment: .leading, spacing: DesignTokens.spacingMD) {
-                // Emoji + Source icon
+                // Icon + Source icon
                 HStack {
-                    if let emoji = item.emoji {
-                        Text(emoji)
-                            .font(AppTheme.emoji)
-                    }
+                    TaskIconView(emoji: item.emoji, actionType: item.actionType, size: .medium)
                     
                     Spacer()
                     

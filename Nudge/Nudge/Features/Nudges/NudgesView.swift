@@ -14,6 +14,7 @@
 
 import SwiftUI
 import SwiftData
+import WidgetKit
 import os.log
 
 private let nudgesLog = Logger(subsystem: "com.tarsitgroup.nudge", category: "NudgesView")
@@ -40,11 +41,9 @@ struct NudgesView: View {
     @State private var aiInsight: String?
     @State private var isGeneratingInsight = false
 
-    // Editing
-    @State private var editingItem: NudgeItem?
-    @State private var showSnoozeFor: NudgeItem?
-    @State private var showBreakdownFor: NudgeItem?
-    @State private var showDraftFor: NudgeItem?
+    // Inline expansion (ADHD: expand in place, no navigation)
+    @State private var expandedItemID: UUID?
+    @State private var userActivity: NSUserActivity?
 
     // Message compose
     @State private var showMessageCompose = false
@@ -56,6 +55,11 @@ struct NudgesView: View {
     @State private var undoPreviousSortOrder: Int = 0
     @State private var showUndoToast = false
     @State private var undoTimerTask: Task<Void, Never>?
+    
+    // Delete undo
+    @State private var undoDeleteItem: NudgeItem?
+    @State private var showDeleteUndoToast = false
+    @State private var undoDeleteTimerTask: Task<Void, Never>?
     
     // Live Activity prompt
     @State private var showLiveActivityPrompt = false
@@ -75,7 +79,7 @@ struct NudgesView: View {
     // Focus Timer (Phase 3)
     @State private var focusTimerItem: NudgeItem?
     
-    // Timeline toggle (Phase 7)
+    // View mode
     @State private var showTimeline = false
     @State private var calendarService = CalendarService.shared
 
@@ -86,18 +90,26 @@ struct NudgesView: View {
 
                 if horizonGroups.isEmpty {
                     emptyView
-                } else if showTimeline {
-                    TimelineView(
-                        calendarEvents: calendarService.todayEvents,
-                        onTapTask: { item in editingItem = item }
-                    )
                 } else {
-                    listContent
+                    if showTimeline {
+                        TimelineView(
+                            calendarEvents: calendarService.todayEvents,
+                            onTapTask: { item in toggleExpand(item) }
+                        )
+                    } else {
+                        listContent
+                    }
                 }
 
                 // Undo toast
                 if showUndoToast {
                     undoToastView
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                
+                // Delete undo toast
+                if showDeleteUndoToast {
+                    deleteUndoToastView
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 
@@ -108,7 +120,7 @@ struct NudgesView: View {
                 }
                 
                 // Floating "Pick For Me" button
-                if !horizonGroups.isEmpty && horizonGroups.today.count >= 2 && !showPickedCard {
+                if !showTimeline && !horizonGroups.isEmpty && horizonGroups.today.count >= 2 && !showPickedCard {
                     VStack {
                         Spacer()
                         PickForMeButton {
@@ -129,7 +141,7 @@ struct NudgesView: View {
                         },
                         onSnooze: {
                             dismissPickedCard()
-                            showSnoozeFor = item
+                            snoozeQuick(item)
                         },
                         onStartFocus: {
                             dismissPickedCard()
@@ -142,6 +154,8 @@ struct NudgesView: View {
                     .transition(.opacity)
                     .zIndex(100)
                 }
+                
+                // (Inline expansion — no popup overlay)
             }
             .navigationTitle(String(localized: "Nudges"))
             .navigationBarTitleDisplayMode(.large)
@@ -213,41 +227,7 @@ struct NudgesView: View {
                 }
             }
         }
-        .sheet(item: $editingItem) { item in
-            ItemEditSheet(item: item) {
-                refreshData()
-            }
-            .presentationDetents([.medium])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(.ultraThinMaterial)
-        }
-        .sheet(item: $showSnoozeFor) { item in
-            SnoozePickerView(item: item) { date in
-                repository?.snooze(item, until: date)
-                showSnoozeFor = nil
-                refreshData()
-            }
-            .presentationDetents([.medium])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(.ultraThinMaterial)
-        }
-        .sheet(item: $showBreakdownFor) { item in
-            TaskBreakdownView(
-                taskContent: item.content,
-                taskEmoji: item.emoji
-            )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(Color.black)
-        }
-        .sheet(item: $showDraftFor) { item in
-            DraftPreviewSheet(item: item) {
-                ActionService.perform(action: item.actionType ?? .text, item: item)
-            }
-            .presentationDetents([.medium])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(.ultraThinMaterial)
-        }
+        // Detail/draft/snooze handled by inline expanded card
         .sheet(isPresented: $showMessageCompose) {
             if ActionService.canSendText {
                 MessageComposeView(
@@ -271,12 +251,12 @@ struct NudgesView: View {
             }
         }
     }
-
+    
     // MARK: - List Content
 
     private var listContent: some View {
         ScrollView {
-            LazyVStack(spacing: DesignTokens.spacingLG) {
+            VStack(spacing: DesignTokens.spacingLG) {
                 
                 // Daily progress header
                 DailyProgressHeader(
@@ -321,12 +301,9 @@ struct NudgesView: View {
                     .padding(DesignTokens.spacingMD)
                     .background {
                         RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusChip)
-                            .fill(DesignTokens.accentActive.opacity(0.06))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusChip)
-                                    .strokeBorder(DesignTokens.accentActive.opacity(0.12), lineWidth: 0.5)
-                            )
+                            .fill(DesignTokens.accentActive.opacity(0.05))
                     }
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusChip))
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
                 
@@ -345,10 +322,7 @@ struct NudgesView: View {
                     }
                     .padding(.horizontal, DesignTokens.spacingMD)
                     .padding(.vertical, DesignTokens.spacingSM)
-                    .background {
-                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusChip)
-                            .fill(DesignTokens.accentActive.opacity(0.05))
-                    }
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusChip))
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     .animation(.easeOut(duration: 0.3), value: isDraftingCount)
                 }
@@ -379,7 +353,7 @@ struct NudgesView: View {
     // MARK: - Horizon Section Builder
     
     /// Builds a collapsible section for a given time horizon.
-    /// Items with actions/drafts get the richer ActionableNudgeRow, others get InboxItemRow.
+    /// Compact rows expand inline to show full detail.
     private func horizonSection(for horizon: TimeHorizon, items: [NudgeItem]) -> some View {
         CollapsibleNudgeSection(
             horizon: horizon,
@@ -431,98 +405,154 @@ struct NudgesView: View {
         }
     }
     
-    /// Picks the right row component for an item based on whether it has actions/drafts.
-    /// Wraps each row in SwipeableRow for gesture-based actions.
-    /// Phase 3: Adds inline micro-step expansion below the row when expanded.
+    /// Picks the right row component for an item.
+    /// Tap toggles inline expansion. Swipe gestures for done/snooze.
+    /// Compact row ALWAYS visible — expanded card slides below it.
     @ViewBuilder
     private func itemRow(for item: NudgeItem, in horizon: TimeHorizon) -> some View {
-        VStack(spacing: 0) {
-            if horizon == .doneToday {
-                // Done items — no swipe actions
-                InboxItemRow(
-                    item: item,
-                    onTap: { editingItem = item },
-                    onDone: nil,
-                    onSnooze: nil,
-                    onBreakDown: nil
-                )
-            } else if (item.hasAction || item.hasDraft) {
-                // Actionable items — richer row with swipe
-                SwipeableRow(
-                    content: {
-                        ActionableNudgeRow(
+        let isExpanded = expandedItemID == item.id
+        
+        if horizon == .doneToday {
+            // Done items — compact, read-only feel (no expansion)
+            NudgeCompactRow(
+                item: item,
+                isExpanded: false,
+                onTap: {},
+                onDone: nil
+            )
+        } else {
+            // Swipe wraps the ENTIRE card (compact + expanded).
+            // Right swipe → Done (green). Left swipe → Snooze 2h (amber).
+            SwipeableRow(
+                content: {
+                    VStack(spacing: 0) {
+                        // Compact row — ALWAYS visible, tap to toggle expand/collapse
+                        NudgeCompactRow(
                             item: item,
-                            onTap: { editingItem = item },
-                            onAction: { performAction(item) },
-                            onDone: { markDoneWithUndo(item) },
-                            onViewDraft: { showDraftFor = item },
-                            onFocus: { focusTimerItem = item }
+                            isExpanded: isExpanded,
+                            onTap: { toggleExpand(item) },
+                            onDone: { markDoneWithUndo(item) }
                         )
-                    },
-                    onSwipeLeading: { markDoneWithUndo(item) },
-                    onSwipeTrailing: horizon != .snoozed ? { showSnoozeFor = item } : nil
-                )
-            } else if horizon == .snoozed {
-                // Snoozed items — swipe to done only
-                SwipeableRow(
-                    content: {
-                        InboxItemRow(
-                            item: item,
-                            onTap: { editingItem = item },
-                            onDone: { markDoneWithUndo(item) },
-                            onSnooze: nil,
-                            onBreakDown: nil,
-                            onFocus: { focusTimerItem = item }
-                        )
-                    },
-                    onSwipeLeading: { markDoneWithUndo(item) }
-                )
-            } else {
-                // Regular active items — full swipe + inline micro-step toggle
-                SwipeableRow(
-                    content: {
-                        InboxItemRow(
-                            item: item,
-                            onTap: { editingItem = item },
-                            onDone: { markDoneWithUndo(item) },
-                            onSnooze: { showSnoozeFor = item },
-                            onBreakDown: { toggleMicroSteps(for: item) },
-                            onFocus: { focusTimerItem = item }
-                        )
-                    },
-                    onSwipeLeading: { markDoneWithUndo(item) },
-                    onSwipeTrailing: { showSnoozeFor = item }
-                )
-            }
-            
-            // Phase 3: Inline micro-step expansion
-            if expandedMicroSteps.contains(item.id) {
-                let isLoading = microStepsLoading.contains(item.id)
-                let steps = Binding<[MicroStep]>(
-                    get: { microStepsCache[item.id] ?? [] },
-                    set: { microStepsCache[item.id] = $0 }
-                )
-                
-                InlineMicroSteps(
-                    parentItem: item,
-                    steps: steps,
-                    isLoading: isLoading,
-                    onAllComplete: {
-                        // All micro-steps checked — complete the parent
-                        collapseMicroSteps(for: item)
-                        markDoneWithUndo(item)
-                    },
-                    onCollapse: {
-                        collapseMicroSteps(for: item)
+                        
+                        // Expanded detail — slides below compact row
+                        if isExpanded {
+                            NudgeExpandedCard(
+                                item: item,
+                                onDone: { markDoneWithUndo(item) },
+                                onSnooze: { date in
+                                    repository?.snooze(item, until: date)
+                                    refreshData()
+                                },
+                                onDelete: { deleteWithUndo(item) },
+                                onCollapse: { collapseItem() },
+                                onFocus: { focusTimerItem = item },
+                                onAction: { performAction(item) },
+                                onContentChanged: { refreshData() }
+                            )
+                            .padding(.top, 1)
+                        }
                     }
-                )
-                .padding(.leading, DesignTokens.spacingSM)
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .top)).combined(with: .scale(scale: 0.95, anchor: .top)),
-                    removal: .opacity.combined(with: .scale(scale: 0.95, anchor: .top))
-                ))
+                },
+                onSwipeLeading: { markDoneWithUndo(item) },
+                leadingLabel: String(localized: "Done"),
+                leadingIcon: "checkmark",
+                leadingColor: DesignTokens.accentComplete,
+                onSwipeTrailing: { snoozeQuick(item) },
+                trailingLabel: String(localized: "Snooze"),
+                trailingIcon: "moon.zzz.fill",
+                trailingColor: DesignTokens.accentStale
+            )
+        }
+    }
+    
+    // MARK: - Inline Expansion Helpers
+    
+    /// Toggle expansion for an item (ADHD: one card at a time).
+    private func toggleExpand(_ item: NudgeItem) {
+        HapticService.shared.actionButtonTap()
+        withAnimation(AnimationConstants.springSmooth) {
+            if expandedItemID == item.id {
+                expandedItemID = nil
+                // Clear Handoff activity when collapsing
+                userActivity?.invalidate()
+                userActivity = nil
+            } else {
+                expandedItemID = item.id
+                // Advertise this task for Handoff
+                let activity = HandoffService.viewTaskUserActivity(for: item)
+                activity.becomeCurrent()
+                userActivity = activity
             }
         }
+    }
+    
+    /// Collapse the currently expanded item.
+    private func collapseItem() {
+        HapticService.shared.actionButtonTap()
+        withAnimation(AnimationConstants.springSmooth) {
+            expandedItemID = nil
+        }
+    }
+    
+    private func snoozeQuick(_ item: NudgeItem) {
+        // Quick snooze: 2 hours from now
+        let snoozeDate = Calendar.current.date(byAdding: .hour, value: 2, to: Date()) ?? Date()
+        repository?.snooze(item, until: snoozeDate)
+        HapticService.shared.swipeDone()
+
+        // Clean up expanded state
+        expandedItemID = nil
+        expandedMicroSteps.remove(item.id)
+        microStepsCache.removeValue(forKey: item.id)
+
+        refreshData()
+        NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
+        syncLiveActivity()
+    }
+
+    private func deleteWithUndo(_ item: NudgeItem) {
+        undoPreviousSortOrder = item.sortOrder
+        repository?.drop(item)
+        HapticService.shared.actionButtonTap()
+
+        // Clean up any cached state for this item
+        expandedItemID = nil
+        expandedMicroSteps.remove(item.id)
+        microStepsCache.removeValue(forKey: item.id)
+
+        undoDeleteItem = item
+        undoDeleteTimerTask?.cancel()
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            showDeleteUndoToast = true
+        }
+        undoDeleteTimerTask = Task {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            dismissDeleteUndoToast()
+        }
+
+        refreshData()
+        NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
+        syncLiveActivity()
+    }
+
+    private func undoLastDelete() {
+        guard let item = undoDeleteItem else { return }
+        // Restore from dropped status via repository
+        repository?.undoDrop(item, restoreSortOrder: undoPreviousSortOrder)
+        undoDeleteTimerTask?.cancel()
+        dismissDeleteUndoToast()
+        HapticService.shared.prepare()
+        refreshData()
+        NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
+        syncLiveActivity()
+    }
+
+    private func dismissDeleteUndoToast() {
+        withAnimation(.easeOut(duration: 0.25)) {
+            showDeleteUndoToast = false
+        }
+        undoDeleteItem = nil
     }
 
     // MARK: - Empty View (Phase 4: Time-aware, personality-driven)
@@ -636,11 +666,11 @@ struct NudgesView: View {
         case .morning:
             return String(localized: "No nudges yet — tell Nudgy what's on your mind, or add one yourself")
         case .afternoon:
-            return String(localized: "Your list is clear. Brain dump something, or enjoy the quiet")
+            return String(localized: "Your list is clear. Unload something, or enjoy the quiet")
         case .evening:
             return String(localized: "Nothing pending. Prep tomorrow, or just relax — you've earned it")
         case .night:
-            return String(localized: "All clear. Nudgy's here if you remember something")
+            return String(localized: "Nothing pending. Nudgy's here if you remember something")
         }
     }
 
@@ -659,10 +689,14 @@ struct NudgesView: View {
         repository?.markDone(item)
         HapticService.shared.swipeDone()
         
+        // Remove from Spotlight index
+        SpotlightIndexer.removeTask(id: item.id)
+        
         // Phase 7: Trigger celebration particles
         showCompletionParticles = true
         
-        // Clean up any expanded micro-steps for this item
+        // Clean up any cached state for this item
+        expandedItemID = nil
         expandedMicroSteps.remove(item.id)
         microStepsCache.removeValue(forKey: item.id)
 
@@ -785,17 +819,38 @@ struct NudgesView: View {
                 }
             }
             .padding(DesignTokens.spacingLG)
-            .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.5))
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
+            .shadow(color: .black.opacity(0.4), radius: 16, y: 4)
+            .padding(.horizontal, DesignTokens.spacingLG)
+            .padding(.bottom, 80)
+        }
+    }
+
+    private var deleteUndoToastView: some View {
+        VStack {
+            Spacer()
+
+            HStack(spacing: DesignTokens.spacingMD) {
+                Image(systemName: "trash.fill")
+                    .foregroundStyle(DesignTokens.accentOverdue)
+
+                Text(String(localized: "Deleted"))
+                    .font(AppTheme.body)
+                    .foregroundStyle(DesignTokens.textPrimary)
+
+                Spacer()
+
+                Button {
+                    undoLastDelete()
+                } label: {
+                    Text(String(localized: "Undo"))
+                        .font(AppTheme.body.weight(.semibold))
+                        .foregroundStyle(DesignTokens.accentActive)
                 }
-                .shadow(color: .black.opacity(0.5), radius: 16, y: 4)
             }
+            .padding(DesignTokens.spacingLG)
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
+            .shadow(color: .black.opacity(0.4), radius: 16, y: 4)
             .padding(.horizontal, DesignTokens.spacingLG)
             .padding(.bottom, 80)
         }
@@ -810,15 +865,46 @@ struct NudgesView: View {
     }
 
     private func refreshData() {
+        setupRepository()
         guard let repository else { return }
         let grouped = repository.fetchAllGrouped()
+        
+        // Apply Focus Filter energy level if active
+        let filteredActive = applyFocusFilter(grouped.active)
 
         // Use time-horizon grouper for ADHD-optimized layout
-        horizonGroups = TimeHorizonGrouper.group(
-            active: grouped.active,
+        let newGroups = TimeHorizonGrouper.group(
+            active: filteredActive,
             snoozed: grouped.snoozed,
             doneToday: grouped.doneToday
         )
+        
+        withAnimation(.easeOut(duration: 0.2)) {
+            // Clear expandedItemID if the item is no longer in any active section
+            if let eid = expandedItemID {
+                let allItemIDs = Set(newGroups.allActive.map(\.id) + newGroups.snoozed.map(\.id))
+                if !allItemIDs.contains(eid) {
+                    expandedItemID = nil
+                }
+            }
+            horizonGroups = newGroups
+        }
+    }
+    
+    /// Apply Focus Filter energy level (set by iOS Focus modes via NudgeFocusFilter).
+    /// Tasks without an energy level are always shown (they haven't been classified).
+    private func applyFocusFilter(_ items: [NudgeItem]) -> [NudgeItem] {
+        let defaults = UserDefaults(suiteName: "group.com.tarsitgroup.nudge")
+        guard let filterRaw = defaults?.string(forKey: "focusFilter_energyLevel"),
+              filterRaw != "all",
+              let filter = EnergyLevel(rawValue: filterRaw) else {
+            return items  // No filter active
+        }
+        
+        return items.filter { item in
+            guard let energy = item.energyLevel else { return true }
+            return energy == filter
+        }
     }
     
     // MARK: - Draft Generation
@@ -870,7 +956,7 @@ struct NudgesView: View {
         
         Task {
             let taskSummary = allActive.prefix(5).map { item in
-                let emoji = item.emoji ?? "📌"
+                let emoji = item.emoji ?? "pin.fill"
                 let age = Calendar.current.dateComponents([.day], from: item.createdAt, to: Date()).day ?? 0
                 return "\(emoji) \(item.content) (age: \(age)d)"
             }.joined(separator: "\n")
@@ -895,6 +981,14 @@ struct NudgesView: View {
     
     /// Sync the Live Activity with current Nudges data directly from this view.
     private func syncLiveActivity() {
+        // Also sync widget data (shared UserDefaults for Home/Lock Screen widgets)
+        syncWidgetData()
+        
+        // Re-index tasks in Spotlight
+        if let repository {
+            SpotlightIndexer.indexAllTasks(from: repository)
+        }
+        
         nudgesLog.info("syncLiveActivity called — liveActivityEnabled: \(self.settings.liveActivityEnabled)")
         guard settings.liveActivityEnabled else { return }
         
@@ -905,7 +999,7 @@ struct NudgesView: View {
             return
         }
         
-        let emoji = topItem.emoji ?? "📌"
+        let emoji = topItem.emoji ?? "pin.fill"
         let accentHex: String
         switch topItem.accentStatus {
         case .stale:    accentHex = "FFB800"
@@ -935,6 +1029,27 @@ struct NudgesView: View {
                 taskID: topItem.id.uuidString
             )
         }
+    }
+    
+    // MARK: - Widget Data Sync
+    
+    /// Write current task data to shared App Group UserDefaults
+    /// so Home Screen and Lock Screen widgets can read it.
+    private func syncWidgetData() {
+        guard let defaults = UserDefaults(suiteName: AppGroupID.suiteName) else { return }
+        
+        let allActive = horizonGroups.allActive
+        let nextItem = allActive.first
+        
+        defaults.set(nextItem?.content, forKey: "widget_nextTask")
+        defaults.set(nextItem?.emoji ?? "🐧", forKey: "widget_nextTaskEmoji")
+        defaults.set(nextItem?.id.uuidString, forKey: "widget_nextTaskID")
+        defaults.set(allActive.count, forKey: "widget_activeCount")
+        defaults.set(horizonGroups.doneToday.count, forKey: "widget_completedToday")
+        defaults.set(horizonGroups.today.count + horizonGroups.doneToday.count, forKey: "widget_totalToday")
+        
+        // Tell WidgetKit to refresh
+        WidgetCenter.shared.reloadAllTimelines()
     }
     
     /// Prompt user to enable Live Activity if they haven't been asked and have active tasks.
@@ -1027,16 +1142,9 @@ struct NudgesView: View {
         .padding(DesignTokens.spacingMD)
         .background {
             RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.accentActive.opacity(0.04))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .strokeBorder(DesignTokens.accentActive.opacity(0.15), lineWidth: 0.5)
-                )
+                .fill(DesignTokens.accentActive.opacity(0.04))
         }
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
     }
 }
 
@@ -1057,11 +1165,14 @@ struct ActionableNudgeRow: View {
 
     private var actionLabel: String {
         switch item.actionType {
-        case .call:     return String(localized: "Call")
-        case .text:     return String(localized: "Text")
-        case .email:    return String(localized: "Email")
-        case .openLink: return String(localized: "Open")
-        case nil:       return String(localized: "Act")
+        case .call:           return String(localized: "Call")
+        case .text:           return String(localized: "Text")
+        case .email:          return String(localized: "Email")
+        case .openLink:       return String(localized: "Open")
+        case .search:         return String(localized: "Search")
+        case .navigate:       return String(localized: "Navigate")
+        case .addToCalendar:  return String(localized: "Add")
+        case nil:             return String(localized: "Act")
         }
     }
 
@@ -1074,9 +1185,7 @@ struct ActionableNudgeRow: View {
             VStack(alignment: .leading, spacing: DesignTokens.spacingSM) {
                 // Top row: emoji + content + done button
                 HStack(spacing: DesignTokens.spacingMD) {
-                    Text(item.emoji ?? "📋")
-                        .font(.system(size: 22))
-                        .frame(width: 36)
+                    TaskIconView(emoji: item.emoji, actionType: item.actionType, size: .medium, accentColor: accentColor)
 
                     VStack(alignment: .leading, spacing: DesignTokens.spacingXS) {
                         Text(item.content)
@@ -1226,37 +1335,17 @@ struct ActionableNudgeRow: View {
             }
             .padding(DesignTokens.spacingMD)
             .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(.ultraThinMaterial)
-
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(DesignTokens.cardSurface.opacity(0.4))
-
-                    // Accent glow (amber for stale items)
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .fill(
-                            LinearGradient(
-                                colors: [accentColor.opacity(item.isStale ? 0.10 : 0.06), .clear],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+                // Accent glow visible through glass
+                RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
+                    .fill(
+                        LinearGradient(
+                            colors: [accentColor.opacity(item.isStale ? 0.12 : 0.07), .clear],
+                            startPoint: .top,
+                            endPoint: .center
                         )
-
-                    RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    accentColor.opacity(0.25),
-                                    Color.white.opacity(0.04)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.5
-                        )
-                }
+                    )
             }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
         .buttonStyle(.plain)
     }

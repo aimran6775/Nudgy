@@ -15,7 +15,7 @@ enum NudgyToolDefinitions {
     
     /// All tools available during conversation.
     static var allTools: [[String: Any]] {
-        [lookupTasks, getTaskStats, getCurrentTime, taskAction, extractMemory]
+        [lookupTasks, getTaskStats, getCurrentTime, taskAction, executeAction, generateDraft, extractMemory]
     }
     
     /// Tools for brain dump mode — focused on task creation + memory.
@@ -133,6 +133,84 @@ enum NudgyToolDefinitions {
                     ]
                 ],
                 "required": ["action", "task_content"]
+            ] as [String: Any]
+        ] as [String: Any]
+    ]
+    
+    // MARK: - execute_action
+    
+    static let executeAction: [String: Any] = [
+        "type": "function",
+        "function": [
+            "name": "execute_action",
+            "description": "Execute an action for the user immediately. Use when the user says things like 'send it', 'call them', 'open that', 'search for it', 'do it now'. This opens the compose sheet, phone dialer, browser, or maps directly.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "action_type": [
+                        "type": "string",
+                        "enum": ["CALL", "TEXT", "EMAIL", "SEARCH", "NAVIGATE", "LINK"],
+                        "description": "What action to execute."
+                    ],
+                    "target": [
+                        "type": "string",
+                        "description": "The target: phone number, email address, URL, search query, or destination address."
+                    ],
+                    "task_content": [
+                        "type": "string",
+                        "description": "The original task content to match (if executing an existing task's action)."
+                    ],
+                    "draft_body": [
+                        "type": "string",
+                        "description": "For TEXT/EMAIL: the message body to pre-fill."
+                    ],
+                    "draft_subject": [
+                        "type": "string",
+                        "description": "For EMAIL: the email subject line."
+                    ],
+                    "contact_name": [
+                        "type": "string",
+                        "description": "Name of the person to contact (for contact resolution)."
+                    ]
+                ],
+                "required": ["action_type"]
+            ] as [String: Any]
+        ] as [String: Any]
+    ]
+    
+    // MARK: - generate_draft
+    
+    static let generateDraft: [String: Any] = [
+        "type": "function",
+        "function": [
+            "name": "generate_draft",
+            "description": "Generate a text message or email draft for the user. Use when the user asks you to draft, write, or compose a message/email. Return the draft so the user can review before sending.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "draft_type": [
+                        "type": "string",
+                        "enum": ["text", "email"],
+                        "description": "Whether this is a text message or email draft."
+                    ],
+                    "recipient_name": [
+                        "type": "string",
+                        "description": "Who the message is for."
+                    ],
+                    "subject": [
+                        "type": "string",
+                        "description": "Email subject line (for emails only)."
+                    ],
+                    "body": [
+                        "type": "string",
+                        "description": "The full message body."
+                    ],
+                    "context": [
+                        "type": "string",
+                        "description": "What the message is about — brief description."
+                    ]
+                ],
+                "required": ["draft_type", "recipient_name", "body"]
             ] as [String: Any]
         ] as [String: Any]
     ]

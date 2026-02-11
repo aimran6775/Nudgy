@@ -32,12 +32,15 @@ struct NudgyHomeView: View {
     @State private var speechService = SpeechService()
     @State private var showHistory = false
     @FocusState private var isInputFocused: Bool
-    @State private var showWardrobe = false
+    // Wardrobe is now accessible via the unified inventory sheet
     @State private var showInlineChat = false
+    @State private var showInventory = false
     @State private var isVoiceEnabled: Bool = NudgyConfig.Voice.isEnabled
     
     /// Whether we're in voice conversation mode (auto-listen → send → speak → auto-listen loop)
     @State private var isVoiceConversation = false
+    /// Whether the current voice conversation is brain dump mode (task extraction) vs companion chat
+    @State private var isBrainDumpVoice = false
     /// Tracks if we're waiting for Nudgy to finish speaking before auto-resuming
     @State private var awaitingTTSFinish = false
     
@@ -50,6 +53,12 @@ struct NudgyHomeView: View {
     @State private var showStageUpCelebration = false
     @State private var stageUpTier: StageTier = .bareIce
     
+    /// Fish sparkle effect on the HUD
+    @State private var showFishSparkle = false
+    
+    /// Idle actions engine
+    private let idleActions = NudgyIdleActions.shared
+    
     /// Mood reactor for Nudgy expressions
     private let moodReactor = PenguinMoodReactor.shared
 
@@ -59,6 +68,9 @@ struct NudgyHomeView: View {
             // OLED canvas + subtle ambient glow
             ambientBackground
 
+            // Ambient swimming fish (behind Nudgy, on the ice shelf)
+            ambientFishLayer
+
             VStack(spacing: 0) {
                 // Conversation history (scrollable above Nudgy)
                 if showHistory && !penguinState.chatMessages.isEmpty {
@@ -66,28 +78,14 @@ struct NudgyHomeView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
-                // Top bar — mute + wardrobe + snowflakes
+                // Top bar — mute + celestial button
                 topBar
                     .padding(.horizontal, DesignTokens.spacingLG)
-
-                // Daily challenges panel (expandable quests)
-                if !RewardService.shared.dailyChallenges.isEmpty {
-                    DailyChallengesPanel(challenges: RewardService.shared.dailyChallenges)
-                        .padding(.horizontal, DesignTokens.spacingLG)
-                        .transition(.opacity)
-                }
 
                 Spacer()
 
                 // ★ Nudgy — the whole point, positioned on the ice cliff
                 nudgyCharacter
-
-                // Active task bubble — the "one thing" card near Nudgy
-                if !isVoiceConversation && !isListeningToUser && !showInlineChat {
-                    activeTaskBubble
-                        .padding(.horizontal, DesignTokens.spacingLG)
-                        .transition(.scale(scale: 0.9).combined(with: .opacity))
-                }
 
                 // Listening indicator (when mic is active)
                 if isListeningToUser {
@@ -125,6 +123,9 @@ struct NudgyHomeView: View {
             // Fish reward animation overlay
             FishRewardOverlay()
             
+            // Celebratory fish burst overlay (task completion)
+            CompletionFishBurst()
+            
             // Stage-up celebration overlay
             if showStageUpCelebration {
                 StageUpCelebration(newStage: stageUpTier) {
@@ -134,6 +135,23 @@ struct NudgyHomeView: View {
                 .transition(.opacity)
                 .zIndex(100)
             }
+
+            // Inventory overlay — full-screen, fades over the scene
+            if showInventory {
+                CelestialExpandedOverlay(
+                    isExpanded: $showInventory,
+                    level: RewardService.shared.level,
+                    fishCount: RewardService.shared.snowflakes,
+                    streak: RewardService.shared.currentStreak,
+                    levelProgress: RewardService.shared.levelProgress,
+                    tasksToday: RewardService.shared.tasksCompletedToday,
+                    totalCompleted: totalCompletedCount,
+                    activeCount: activeQueue.count,
+                    stage: StageTier.from(level: RewardService.shared.level),
+                    challenges: RewardService.shared.dailyChallenges
+                )
+                .zIndex(200)
+            }
         }
         .preferredColorScheme(.dark)
         .onAppear {
@@ -141,6 +159,11 @@ struct NudgyHomeView: View {
             startBreathingAnimation()
             refreshActiveQueue()
             updateMoodReactor()
+            // Start idle action engine
+            idleActions.start(penguinState: penguinState)
+        }
+        .onDisappear {
+            idleActions.stop()
         }
         .onReceive(NotificationCenter.default.publisher(for: .nudgeDataChanged)) { _ in
             refreshActiveQueue()
@@ -166,8 +189,13 @@ struct NudgyHomeView: View {
         .onChange(of: isVoiceConversation) { _, active in
             penguinState.isVoiceConversationActive = active
             speechService.silenceAutoSendEnabled = active
-            if !active {
+            if active {
+                // Pause idle actions during conversation
+                idleActions.stop()
+            } else {
                 awaitingTTSFinish = false
+                // Resume idle actions after conversation
+                idleActions.start(penguinState: penguinState)
             }
         }
         .onChange(of: NudgyVoiceOutput.shared.isSpeaking) { wasSpeaking, isSpeaking in
@@ -197,13 +225,7 @@ struct NudgyHomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             greetIfNeeded()
         }
-        .sheet(isPresented: $showWardrobe) {
-            WardrobeView()
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(DesignTokens.cardSurface)
-                .preferredColorScheme(.dark)
-        }
+
 
     }
 
@@ -261,6 +283,38 @@ struct NudgyHomeView: View {
         .ignoresSafeArea()
     }
 
+    // MARK: - Home Weather Layer
+
+    private var homeWeatherLayer: some View {
+        let hour = Calendar.current.component(.hour, from: .now)
+        let time: AntarcticTimeOfDay = {
+            switch hour {
+            case 5...7:   return .dawn
+            case 8...17:  return .day
+            case 18...20: return .dusk
+            default:      return .night
+            }
+        }()
+        return HomeWeatherOverlay(
+            mood: RewardService.shared.environmentMood,
+            timeOfDay: time
+        )
+    }
+
+    // MARK: - Ambient Fish Layer
+
+    private var ambientFishLayer: some View {
+        GeometryReader { geo in
+            AmbientFishScene(
+                fishEarned: min(RewardService.shared.tasksCompletedToday, 6),
+                sceneWidth: geo.size.width,
+                sceneHeight: geo.size.height
+            )
+        }
+        .allowsHitTesting(false)
+        .ignoresSafeArea()
+    }
+
     // MARK: - Nudgy Character (center of screen)
 
     private var nudgyCharacter: some View {
@@ -278,8 +332,8 @@ struct NudgyHomeView: View {
                         // Nudgy is thinking — let the user know
                         HapticService.shared.prepare()
                     } else {
-                        // Start voice conversation — Nudgy is a companion you TALK to
-                        startVoiceConversation()
+                        // Tap = companion conversation (just talk)
+                        startCompanionConversation()
                     }
                 },
                 onChatTap: {
@@ -293,11 +347,11 @@ struct NudgyHomeView: View {
             // Sleep z-bubbles when Nudgy is napping
             if moodReactor.isSleeping {
                 SleepBubble()
-                    .offset(x: 40, y: -80)
+                    .offset(x: 30, y: -60)
                     .transition(.opacity)
             }
             
-            // Micro-reaction bubble
+            // Micro-reaction bubble (mood reactor)
             if let reaction = moodReactor.microReaction {
                 Text(reaction)
                     .font(.system(size: 11, weight: .medium))
@@ -309,7 +363,7 @@ struct NudgyHomeView: View {
                             .fill(.ultraThinMaterial)
                     )
                     .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
-                    .offset(y: -130)
+                    .offset(y: -90)
                     .transition(.opacity.combined(with: .offset(y: 10)))
             }
         }
@@ -348,7 +402,7 @@ struct NudgyHomeView: View {
             // Hint text
             if isVoiceConversation {
                 Text(speechService.liveTranscript.isEmpty
-                     ? String(localized: "brain dump — listening...")
+                     ? String(localized: "brain unload — listening...")
                      : String(localized: "pause to send"))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(DesignTokens.accentActive.opacity(0.6))
@@ -429,8 +483,16 @@ struct NudgyHomeView: View {
                 .padding(.vertical, 4)
                 .background(Capsule().fill(Color.white.opacity(0.04)))
         } else {
-            HStack {
+            HStack(alignment: .bottom, spacing: 6) {
                 if message.role == .user { Spacer(minLength: 80) }
+
+                // Tiny penguin avatar for Nudgy messages
+                if message.role == .nudgy {
+                    Text("🐧")
+                        .font(.system(size: 12))
+                        .frame(width: 20, height: 20)
+                        .offset(y: -2)
+                }
 
                 Text(message.text)
                     .font(AppTheme.caption)
@@ -464,6 +526,10 @@ struct NudgyHomeView: View {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     isVoiceEnabled.toggle()
                     NudgyConfig.Voice.isEnabled = isVoiceEnabled
+                    // Stop any in-progress speech when muting
+                    if !isVoiceEnabled {
+                        NudgyVoiceOutput.shared.stop()
+                    }
                 }
             } label: {
                 Image(systemName: isVoiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
@@ -488,47 +554,11 @@ struct NudgyHomeView: View {
 
             Spacer()
 
-            // Altitude HUD — stats overlay
-            AltitudeHUD(
-                level: RewardService.shared.level,
+            // Celestial button (sun/moon) — expands into inventory overlay
+            CelestialButton(
+                isExpanded: $showInventory,
                 fishCount: RewardService.shared.snowflakes,
-                streak: RewardService.shared.currentStreak,
-                levelProgress: RewardService.shared.levelProgress,
-                tasksToday: RewardService.shared.tasksCompletedToday
-            )
-            .background(
-                GeometryReader { geo in
-                    Color.clear
-                        .onAppear {
-                            let frame = geo.frame(in: .global)
-                            fishHUDPosition = CGPoint(x: frame.midX, y: frame.midY)
-                        }
-                }
-            )
-
-            Spacer()
-
-            // Wardrobe button
-            Button {
-                HapticService.shared.prepare()
-                showWardrobe = true
-            } label: {
-                Image(systemName: "tshirt.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(DesignTokens.accentActive)
-                    .symbolRenderingMode(.hierarchical)
-                    .frame(width: 36, height: 36)
-                    .background(
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                    )
-                    .glassEffect(.regular.interactive(), in: .circle)
-            }
-            .buttonStyle(.plain)
-            .nudgeAccessibility(
-                label: String(localized: "Wardrobe"),
-                hint: String(localized: "Open the wardrobe to dress up Nudgy"),
-                traits: .isButton
+                levelProgress: RewardService.shared.levelProgress
             )
         }
     }
@@ -570,61 +600,68 @@ struct NudgyHomeView: View {
 
             Spacer()
 
-            // Voice conversation button (mic / brain dump)
-            Button {
+            // Voice conversation button (mic — tap = companion, long-press = brain dump)
+            ZStack {
+                if isVoiceConversation {
+                    Circle()
+                        .stroke(isBrainDumpVoice
+                                ? Color.orange.opacity(0.4)
+                                : DesignTokens.accentActive.opacity(0.4),
+                                lineWidth: 2)
+                        .frame(width: 64, height: 64)
+                        .scaleEffect(breatheAnimation ? 1.15 : 1.0)
+                        .opacity(breatheAnimation ? 0.3 : 0.7)
+                        .animation(
+                            .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
+                            value: breatheAnimation
+                        )
+                }
+
+                Circle()
+                    .fill(isVoiceConversation
+                          ? AnyShapeStyle(isBrainDumpVoice ? Color.orange : DesignTokens.accentActive)
+                          : isListeningToUser
+                              ? AnyShapeStyle(DesignTokens.accentActive.opacity(0.8))
+                              : AnyShapeStyle(DesignTokens.cardSurface))
+                    .frame(width: 56, height: 56)
+                    .background(
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .opacity(isVoiceConversation || isListeningToUser ? 0 : 1)
+                    )
+                    .overlay(
+                        Circle()
+                            .strokeBorder(
+                                isVoiceConversation || isListeningToUser
+                                    ? (isBrainDumpVoice ? Color.orange : DesignTokens.accentActive)
+                                    : Color.white.opacity(0.12),
+                                lineWidth: 0.5
+                            )
+                    )
+                    .shadow(color: DesignTokens.accentActive.opacity(0.15), radius: 12, y: 4)
+
+                Image(systemName: isVoiceConversation
+                      ? (isBrainDumpVoice ? "brain.head.profile.fill" : "waveform.circle.fill")
+                      : isListeningToUser
+                          ? "stop.fill"
+                          : "mic.fill")
+                    .font(.system(size: isVoiceConversation ? 24 : isListeningToUser ? 16 : 20))
+                    .foregroundStyle(isVoiceConversation || isListeningToUser ? .black : DesignTokens.accentActive)
+                    .symbolEffect(.pulse, isActive: isVoiceConversation && isListeningToUser)
+            }
+            .onTapGesture {
                 if isVoiceConversation {
                     endVoiceConversation()
                 } else if isListeningToUser {
                     stopListening()
                 } else {
-                    startVoiceConversation()
+                    startCompanionConversation()
                 }
-            } label: {
-                ZStack {
-                    if isVoiceConversation {
-                        Circle()
-                            .stroke(DesignTokens.accentActive.opacity(0.4), lineWidth: 2)
-                            .frame(width: 64, height: 64)
-                            .scaleEffect(breatheAnimation ? 1.15 : 1.0)
-                            .opacity(breatheAnimation ? 0.3 : 0.7)
-                            .animation(
-                                .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
-                                value: breatheAnimation
-                            )
-                    }
-
-                    Circle()
-                        .fill(isVoiceConversation
-                              ? AnyShapeStyle(DesignTokens.accentActive)
-                              : isListeningToUser
-                                  ? AnyShapeStyle(DesignTokens.accentActive.opacity(0.8))
-                                  : AnyShapeStyle(DesignTokens.cardSurface))
-                        .frame(width: 56, height: 56)
-                        .background(
-                            Circle()
-                                .fill(.ultraThinMaterial)
-                                .opacity(isVoiceConversation || isListeningToUser ? 0 : 1)
-                        )
-                        .overlay(
-                            Circle()
-                                .strokeBorder(
-                                    isVoiceConversation || isListeningToUser
-                                        ? DesignTokens.accentActive
-                                        : Color.white.opacity(0.12),
-                                    lineWidth: 0.5
-                                )
-                        )
-                        .shadow(color: DesignTokens.accentActive.opacity(0.15), radius: 12, y: 4)
-
-                    Image(systemName: isVoiceConversation
-                          ? "waveform.circle.fill"
-                          : isListeningToUser
-                              ? "stop.fill"
-                              : "mic.fill")
-                        .font(.system(size: isVoiceConversation ? 24 : isListeningToUser ? 16 : 20))
-                        .foregroundStyle(isVoiceConversation || isListeningToUser ? .black : DesignTokens.accentActive)
-                        .symbolEffect(.pulse, isActive: isVoiceConversation && isListeningToUser)
-                }
+            }
+            .onLongPressGesture(minimumDuration: 0.5) {
+                guard !isVoiceConversation && !isListeningToUser else { return }
+                HapticService.shared.actionButtonTap()
+                startBrainDumpVoice()
             }
             .disabled(penguinState.isChatGenerating && !isVoiceConversation)
             .nudgeAccessibility(
@@ -633,7 +670,7 @@ struct NudgyHomeView: View {
                     : isListeningToUser
                         ? String(localized: "Stop listening")
                         : String(localized: "Talk to Nudgy"),
-                hint: String(localized: "Tap to have a voice conversation with Nudgy"),
+                hint: String(localized: "Tap to chat, long press for brain dump mode"),
                 traits: .isButton
             )
 
@@ -812,8 +849,16 @@ struct NudgyHomeView: View {
                 .background(Capsule().fill(Color.white.opacity(0.04)))
                 .frame(maxWidth: .infinity, alignment: .center)
         } else {
-            HStack {
+            HStack(alignment: .bottom, spacing: 6) {
                 if message.role == .user { Spacer(minLength: 48) }
+
+                // Tiny penguin avatar for Nudgy messages
+                if message.role == .nudgy {
+                    Text("🐧")
+                        .font(.system(size: 14))
+                        .frame(width: 22, height: 22)
+                        .offset(y: -2)
+                }
 
                 Text(message.text)
                     .font(.system(size: 13))
@@ -835,15 +880,46 @@ struct NudgyHomeView: View {
 
     // MARK: - Voice Conversation Loop
     
-    /// Curated "brain dump starting" lines for when the user taps the penguin.
+    /// Curated companion greetings — warm, not task-focused
+    private static let companionGreetings: [String] = [
+        "Hey! What's up?",
+        "I'm here. What's on your mind?",
+        "*looks up* Hey!",
+        "Talk to me!",
+        "I'm listening.",
+    ]
+    
+    /// Build a companion greeting that may reference something Nudgy remembers.
+    /// 40% chance of a memory callback if facts exist — makes it feel like continuity.
+    private func companionGreetingWithMemory() -> String {
+        let memory = NudgyMemory.shared
+        let facts = memory.store.facts
+        
+        // 40% chance to use a memory callback, if we have facts
+        if !facts.isEmpty, Double.random(in: 0...1) < 0.4 {
+            let fact = facts.randomElement()!
+            
+            // Soft references, not "I REMEMBER THAT YOU..."
+            if let name = memory.userName {
+                return String(localized: "Hey, \(name). 💙")
+            } else if fact.category == .personal {
+                return String(localized: "*remembers* …Hey. I was thinking about you 🐧")
+            } else if fact.category == .emotional {
+                return String(localized: "Hey. …How are you doing? 💙")
+            } else {
+                return String(localized: "*perks up* Oh! Hey 🐧")
+            }
+        }
+        
+        return Self.companionGreetings.randomElement() ?? "Hey!"
+    }
+    
+    /// Curated brain dump greetings — task-extraction focused
     private static let brainDumpGreetings: [String] = [
-        "Brain dump time! Tell me everything!",
-        "Ooh, let it all out! I'll catch every task!",
-        "Talk to me! I'll sort the chaos!",
-        "Go go go! Dump everything on your mind!",
+        "Unload time! Tell me everything!",
+        "Let it all out! I'll catch every task!",
+        "Brain dump mode! Just talk, I'll sort it!",
         "Ready! Say everything, I'll organize it!",
-        "Hit me! What's bouncing around in there?",
-        "Brain dump mode! Just talk, I'll handle the rest!",
     ]
     
     /// Start or stop voice conversation mode
@@ -851,44 +927,55 @@ struct NudgyHomeView: View {
         if isVoiceConversation {
             endVoiceConversation()
         } else {
-            startVoiceConversation()
+            startCompanionConversation()
         }
     }
     
-    /// Begin voice conversation mode — brain dump: auto-listen → extract tasks → speak → auto-listen loop
-    private func startVoiceConversation() {
-        print("🎙️🔄 Starting voice conversation (brain dump mode)")
+    /// Begin companion voice conversation — just talk to Nudgy, no forced task extraction.
+    /// Mic starts IMMEDIATELY — no TTS greeting delay.
+    private func startCompanionConversation() {
+        print("🎙️🔄 Starting companion voice conversation")
         isVoiceConversation = true
+        isBrainDumpVoice = false
+        speechService.silenceAutoSendEnabled = true
+        HapticService.shared.micStart()
+        
+        // Show a brief text bubble — NO TTS for the greeting (instant start)
+        let greeting = companionGreetingWithMemory()
+        penguinState.expression = .listening
+        penguinState.say(greeting, style: .speech, autoDismiss: 2.0)
+        
+        // Start listening immediately — no waiting for TTS
+        startListening()
+    }
+    
+    /// Begin brain dump voice conversation — task extraction mode with specialized prompt.
+    private func startBrainDumpVoice() {
+        print("🎙️🔄 Starting brain dump voice conversation")
+        isVoiceConversation = true
+        isBrainDumpVoice = true
         speechService.silenceAutoSendEnabled = true
         HapticService.shared.micStart()
         
         // Initialize brain dump conversation with specialized system prompt
         NudgyEngine.shared.startBrainDumpConversation(modelContext: modelContext)
         
-        // Greet aloud with brain dump intro, then start listening after TTS finishes
-        let greeting = Self.brainDumpGreetings.randomElement() ?? "Brain dump time!"
+        // Show brain dump greeting as text only — start mic right away
+        let greeting = Self.brainDumpGreetings.randomElement() ?? "Unload time!"
         penguinState.expression = .listening
-        penguinState.say(greeting, style: .speech, autoDismiss: 3.0)
-        NudgyVoiceOutput.shared.speak(greeting)
+        penguinState.say(greeting, style: .speech, autoDismiss: 2.5)
         
-        Task {
-            // Wait for the greeting TTS to finish before starting the mic
-            while NudgyVoiceOutput.shared.isSpeaking {
-                try? await Task.sleep(for: .milliseconds(150))
-            }
-            // Small buffer after TTS finishes to let audio hardware release
-            try? await Task.sleep(for: .milliseconds(300))
-            guard isVoiceConversation else { return }
-            startListening()
-        }
+        // Start listening immediately
+        startListening()
     }
     
     /// End voice conversation mode — stop everything
     private func endVoiceConversation() {
-        print("🎙️🔄 Ending voice conversation mode")
-        let wasBrainDump = NudgyEngine.shared.isBrainDumpMode
+        print("🎙️🔄 Ending voice conversation mode (brainDump=\(isBrainDumpVoice))")
+        let wasBrainDump = isBrainDumpVoice
         
         isVoiceConversation = false
+        isBrainDumpVoice = false
         speechService.silenceAutoSendEnabled = false
         awaitingTTSFinish = false
         
@@ -902,8 +989,8 @@ struct NudgyHomeView: View {
         NudgyVoiceOutput.shared.stop()
         HapticService.shared.micStop()
         
-        // End brain dump conversation and get summary
         if wasBrainDump {
+            // End brain dump conversation and get summary
             let tasksCreated = NudgyEngine.shared.endBrainDumpConversation()
             
             penguinState.expression = .happy
@@ -911,34 +998,41 @@ struct NudgyHomeView: View {
             if tasksCreated > 0 {
                 let summary: String
                 if tasksCreated == 1 {
-                    summary = String(localized: "Brain dump done! Captured 1 task — go check your nudges! 🐧✨")
+                    summary = String(localized: "All unloaded! Captured 1 task — go check your nudges! 🐧✨")
                 } else {
-                    summary = String(localized: "Brain dump done! Captured \(tasksCreated) tasks — they're all in your nudges! 🐧🎉")
+                    summary = String(localized: "All unloaded! Captured \(tasksCreated) tasks — they're all in your nudges! 🐧🎉")
                 }
                 penguinState.say(summary, style: .announcement, autoDismiss: 5.0)
                 NudgyVoiceOutput.shared.speak(summary)
-                
-                // Notify data changed so the nudges view refreshes
                 NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
             } else {
-                let msg = String(localized: "No tasks this time — but I'm here whenever your brain needs a dump! 🧠🐧")
-                penguinState.say(msg, autoDismiss: 4.0)
-                NudgyVoiceOutput.shared.speak(msg)
-            }
-            
-            // Return to idle after announcement
-            Task {
-                try? await Task.sleep(for: .seconds(5.0))
-                if self.penguinState.expression == .happy {
-                    self.penguinState.expression = .idle
-                    self.penguinState.interactionMode = .ambient
-                }
+                // Brain dump with no tasks — gentle, not transactional
+                let msg = String(localized: "Sometimes you just need to talk it out. I'm always here 💙")
+                penguinState.say(msg, autoDismiss: 3.5)
             }
         } else {
-            // Normal conversation end
+            // Companion conversation end — warm goodbye
             NudgyEngine.shared.conversation.endConversation()
-            penguinState.expression = .idle
-            penguinState.say(String(localized: "Talk anytime! 🐧"), autoDismiss: 2.0)
+            penguinState.expression = .happy
+            let goodbyes = [
+                "Talk anytime. I'm right here 🐧",
+                "*quiet nod* I'll be on my iceberg 💙",
+                "See you soon 🧊",
+                "I'm here whenever. …Always 🐧",
+            ]
+            let goodbye = goodbyes.randomElement()!
+            penguinState.say(goodbye, autoDismiss: 3.0)
+        }
+        
+        // Return to idle after a moment
+        Task {
+            try? await Task.sleep(for: .seconds(3.5))
+            if self.penguinState.expression == .happy || self.penguinState.expression == .waving {
+                self.penguinState.expression = .idle
+                self.penguinState.interactionMode = .ambient
+            }
+            // Resume idle actions
+            self.idleActions.start(penguinState: self.penguinState)
         }
     }
 
@@ -948,10 +1042,9 @@ struct NudgyHomeView: View {
             penguinState.startChatting()
         }
 
-        // For single-mic-tap mode, show greeting (conversation mode greets in startVoiceConversation)
+        // For single-mic-tap mode (non-conversation), show a brief greeting
         if !isVoiceConversation {
-            let greeting = Self.brainDumpGreetings.randomElement() ?? "I'm listening!"
-            penguinState.say(greeting, style: .speech, autoDismiss: 2.5)
+            penguinState.say("I'm listening…", style: .speech, autoDismiss: 2.0)
             HapticService.shared.micStart()
         }
 
@@ -1126,11 +1219,38 @@ struct NudgyHomeView: View {
         sendToNudgy(text)
     }
 
+    /// Smart micro-reactions — instant contextual acknowledgment while AI is thinking.
+    /// Replaces the generic "Let me think..." with something that shows Nudgy heard you.
+    private static let thinkingReactions: [(keywords: [String], reactions: [String])] = [
+        (["tired", "exhausted", "drained", "burnt", "can't"],
+         ["*sits closer* …", "Mmm. I hear you…", "Hey… 💙"]),
+        (["stressed", "overwhelm", "anxious", "worry", "scared"],
+         ["*quiet nod*", "I'm here…", "Breathe… 💙"]),
+        (["happy", "great", "awesome", "good", "nice", "excited"],
+         ["Oh! 🐧", "*perks up*", "Ooh…"]),
+        (["help", "how do", "what should", "can you"],
+         ["Hmm…", "*tilts head*", "Let me see…"]),
+        (["add", "create", "remind", "need to", "gotta", "have to"],
+         ["*grabs notepad*", "On it…", "📝"]),
+    ]
+    
+    /// Pick a contextual micro-reaction based on what the user said.
+    private func microReaction(for text: String) -> String {
+        let lower = text.lowercased()
+        for (keywords, reactions) in Self.thinkingReactions {
+            if keywords.contains(where: { lower.contains($0) }) {
+                return reactions.randomElement()!
+            }
+        }
+        // Default gentle acknowledgment
+        return ["Mmm…", "*nods*", "Hmm…", "…"].randomElement()!
+    }
+    
     /// Core send — works for both voice and text input.
     /// Nudgy responds via speech bubble + spoken voice (NOT chat bubbles).
     /// Routes through NudgyEngine for OpenAI-powered conversation with memory.
     private func sendToNudgy(_ text: String) {
-        print("💬 sendToNudgy: '\(text.prefix(80))' (conversation mode: \(isVoiceConversation))")
+        print("💬 sendToNudgy: '\(text.prefix(80))' (conversation mode: \(isVoiceConversation), brainDump: \(isBrainDumpVoice))")
 
         // Ensure we're in chat mode
         if penguinState.interactionMode != .chatting {
@@ -1148,8 +1268,9 @@ struct NudgyHomeView: View {
             penguinState.expression = .thinking
         }
 
-        // Show thinking state
-        penguinState.say(String(localized: "Let me think..."), style: .thought, autoDismiss: nil)
+        // Show instant micro-reaction instead of generic "Let me think..."
+        let reaction = microReaction(for: text)
+        penguinState.say(reaction, style: .thought, autoDismiss: nil)
         HapticService.shared.prepare()
         
         // In conversation mode, mark that we're waiting for TTS to finish
@@ -1187,14 +1308,11 @@ struct NudgyHomeView: View {
         let staleCount = activeQueue.filter { $0.accentStatus == .stale }.count
         let doneToday = grouped.doneToday.count
 
-        // Smart resurfacing: welcome back with context about last focused task
-        if let welcomeBack = NudgyEngine.shared.welcomeBack(settings: settings, activeQueue: activeQueue) {
-            penguinState.queueDialogue(welcomeBack, style: .speech, autoDismiss: 6.0)
-        }
-        
         // Record activity timestamp
         settings.recordActivity()
-
+        
+        // ── ONE smart greeting that weaves in context ──
+        // Instead of 8 queued bubbles, build one rich greeting.
         NudgyEngine.shared.greet(
             userName: settings.userName,
             activeTaskCount: activeQueue.count,
@@ -1202,40 +1320,78 @@ struct NudgyHomeView: View {
             staleCount: staleCount,
             doneToday: doneToday
         )
-
-        // ADHD: Show streak acknowledgment if applicable
-        let streak = RewardService.shared.currentStreak
-        if streak >= 3, let streakMsg = NudgyEngine.shared.streakMessage(days: streak) {
-            penguinState.queueDialogue(streakMsg, style: .whisper, autoDismiss: 4.0)
-        }
-
-        // ADHD: Emotional check-in — gentle "how are you?" if it's been a while
-        if NudgyEngine.shared.shouldCheckIn {
-            Task {
-                try? await Task.sleep(for: .seconds(3))
+        
+        // ── At most ONE follow-up (delayed, not queued on top of greeting) ──
+        Task {
+            try? await Task.sleep(for: .seconds(6))
+            guard self.penguinState.interactionMode != .chatting,
+                  !self.isVoiceConversation else { return }
+            
+            // Priority: welcome-back > streak > memory callback > evening review > check-in
+            // Only show ONE of these.
+            if let welcomeBack = NudgyEngine.shared.welcomeBack(settings: settings, activeQueue: activeQueue) {
+                penguinState.say(welcomeBack, style: .speech, autoDismiss: 5.0)
+                return
+            }
+            
+            let streak = RewardService.shared.currentStreak
+            if streak >= 3, let streakMsg = NudgyEngine.shared.streakMessage(days: streak) {
+                penguinState.say(streakMsg, style: .whisper, autoDismiss: 4.0)
+                return
+            }
+            
+            // Memory callback — reference something Nudgy remembers
+            // Only once every ~3 opens to avoid being creepy
+            if let memoryLine = self.memoryFollowUp() {
+                penguinState.say(memoryLine, style: .whisper, autoDismiss: 5.0)
+                return
+            }
+            
+            let hour = Calendar.current.component(.hour, from: .now)
+            if hour >= 20 {
+                let review = ProactiveNudgyService.generateEveningReview(modelContext: modelContext)
+                if review.completed > 0 || review.remaining > 0 {
+                    penguinState.say(review.moodNote, style: .speech, autoDismiss: 6.0)
+                    return
+                }
+            }
+            
+            // Emotional check-in (only if nothing else was shown)
+            if NudgyEngine.shared.shouldCheckIn {
                 if let checkIn = await NudgyEngine.shared.emotionalCheckIn() {
-                    penguinState.queueDialogue(checkIn, style: .speech, autoDismiss: 8.0)
+                    penguinState.say(checkIn, style: .speech, autoDismiss: 6.0)
                 }
             }
         }
+    }
 
-        // ADHD: Proactive paralysis support for stale tasks
-        let staleTasks = activeQueue.filter { $0.isStale }.map { $0.content }
-        if staleTasks.count >= 2 {
-            Task {
-                try? await Task.sleep(for: .seconds(6))
-                let support = await NudgyEngine.shared.paralysisSupport(staleTasks: staleTasks)
-                penguinState.queueDialogue(support, style: .speech, autoDismiss: 10.0)
+    /// Occasionally surface a memory fact as a gentle follow-up.
+    /// Returns nil most of the time — only fires ~30% when facts exist.
+    private func memoryFollowUp() -> String? {
+        let memory = NudgyMemory.shared
+        let facts = memory.store.facts
+        guard !facts.isEmpty else { return nil }
+        
+        // Only fire ~30% of the time so it doesn't feel formulaic
+        guard Double.random(in: 0...1) < 0.30 else { return nil }
+        
+        // Pick a random fact and build a soft reference
+        guard let fact = facts.randomElement() else { return nil }
+        
+        switch fact.category {
+        case .personal:
+            if let name = memory.userName {
+                return String(localized: "I was thinking… it's nice knowing your name, \(name) 🐧")
             }
-        }
-
-        // ADHD: Overwhelm support when task count is high
-        if activeQueue.count >= 8 {
-            penguinState.queueDialogue(
-                NudgyEngine.shared.overwhelmSupport(),
-                style: .speech,
-                autoDismiss: 8.0
-            )
+            return String(localized: "*adjusts scarf* …I remember things about you, you know 💙")
+        case .preference:
+            return String(localized: "I've been noticing your patterns. …Not in a creepy way. I'm a penguin 🧊")
+        case .emotional:
+            return String(localized: "Hey. …Just wanted to check — how are you really doing? 💙")
+        case .behavioral:
+            return String(localized: "I notice things. …Like how you use this app. It's kind of nice 🐧")
+        case .contextual:
+            return String(localized: "*sits closer* …I feel like I know you a little better now 💙")
         }
     }
 
@@ -1248,6 +1404,12 @@ struct NudgyHomeView: View {
     private func refreshActiveQueue() {
         let repo = NudgeRepository(modelContext: modelContext)
         activeQueue = repo.fetchActiveQueue()
+    }
+
+    /// Total lifetime completed count for inventory display
+    private var totalCompletedCount: Int {
+        let repo = NudgeRepository(modelContext: modelContext)
+        return repo.completedCount()
     }
 
     /// Update the mood reactor with the current environment state.
@@ -1283,81 +1445,6 @@ struct NudgyHomeView: View {
         }
     }
 
-    /// The active task bubble showing the current top-of-queue task.
-    private var activeTaskBubble: some View {
-        ActiveTaskBubble(
-            item: activeQueue.first,
-            queuePosition: activeQueue.isEmpty ? 0 : 1,
-            queueTotal: activeQueue.count,
-            onDone: {
-                guard let item = activeQueue.first else { return }
-                let previousContent = item.content
-                let repo = NudgeRepository(modelContext: modelContext)
-                repo.markDone(item)
-
-                // Trigger fish reward animation
-                let earned = RewardService.shared.recordCompletion(
-                    context: modelContext,
-                    isAllClear: activeQueue.count <= 1
-                )
-                FishRewardEngine.shared.spawnFish(
-                    count: min(earned, 8),
-                    from: CGPoint(x: UIScreen.main.bounds.midX, y: UIScreen.main.bounds.midY + 80),
-                    to: fishHUDPosition
-                )
-
-                // Haptic + penguin celebration
-                HapticService.shared.prepare()
-                penguinState.expression = .celebrating
-                Task {
-                    try? await Task.sleep(for: .seconds(1.5))
-                    if penguinState.expression == .celebrating {
-                        penguinState.expression = .idle
-                    }
-                }
-
-                // Update mood
-                RewardService.shared.updateMood(
-                    context: modelContext,
-                    isAllClear: activeQueue.count <= 1
-                )
-
-                withAnimation(.spring(response: 0.4)) {
-                    refreshActiveQueue()
-                }
-
-                // ADHD: Transition support — help the brain switch to the next task
-                // After refreshActiveQueue(), .first is the NEXT task (done item already removed)
-                if let nextItem = activeQueue.first {
-                    Task {
-                        let msg = await NudgyEngine.shared.transitionTo(
-                            nextTask: nextItem.content,
-                            from: previousContent
-                        )
-                        penguinState.queueDialogue(msg, style: .whisper, autoDismiss: 5.0)
-                    }
-                }
-
-                NotificationCenter.default.post(name: .nudgeDataChanged, object: nil)
-            },
-            onSkip: {
-                guard let item = activeQueue.first else { return }
-                let repo = NudgeRepository(modelContext: modelContext)
-                repo.skip(item)
-
-                withAnimation(.spring(response: 0.4)) {
-                    refreshActiveQueue()
-                }
-            },
-            onTap: {
-                // Navigate to OneThing view
-                NotificationCenter.default.post(
-                    name: Notification.Name("nudgeNavigateToOneThing"),
-                    object: nil
-                )
-            }
-        )
-    }
 }
 
 // MARK: - Preview

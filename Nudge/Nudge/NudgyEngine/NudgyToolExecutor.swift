@@ -23,6 +23,8 @@ struct ToolExecutionResult {
         case taskCompleted(content: String)
         case taskSnoozed(content: String)
         case memoryLearned(fact: String, category: String)
+        case actionExecuted(actionType: String, target: String)
+        case draftGenerated(type: String, recipient: String, body: String, subject: String?)
     }
 }
 
@@ -53,6 +55,10 @@ final class NudgyToolExecutor {
             return executeGetCurrentTime(toolCallId: toolCall.id)
         case "task_action":
             return executeTaskAction(toolCallId: toolCall.id, args: args)
+        case "execute_action":
+            return executeExecuteAction(toolCallId: toolCall.id, args: args)
+        case "generate_draft":
+            return executeGenerateDraft(toolCallId: toolCall.id, args: args)
         case "extract_memory":
             return executeExtractMemory(toolCallId: toolCall.id, args: args)
         default:
@@ -107,9 +113,9 @@ final class NudgyToolExecutor {
         }
         
         let lines = filtered.prefix(8).map { item in
-            var line = "- \(item.emoji ?? "📝") \(item.content) [\(item.statusRaw)]"
-            if item.isOverdue { line += " ⚠️OVERDUE" }
-            else if item.isStale { line += " ⏰stale(\(item.ageInDays)d)" }
+            var line = "- \(item.content) [\(item.statusRaw)]"
+            if item.isOverdue { line += " OVERDUE" }
+            else if item.isStale { line += " stale(\(item.ageInDays)d)" }
             if let contact = item.contactName, !contact.isEmpty {
                 line += " → \(contact)"
             }
@@ -262,7 +268,7 @@ final class NudgyToolExecutor {
             print("🧠✅ Task created: '\(taskContent)' — saved to SwiftData")
             
             // Build concise confirmation for LLM (it reads this and responds to user)
-            var details = "\(emoji ?? "📝") Created: '\(taskContent)'"
+            var details = "\(emoji ?? "doc.text.fill") Created: '\(taskContent)'"
             if priority == .high { details += " ⚡️HIGH" }
             if dueDate != nil { details += " 📅\(dueDateRaw)" }
             if let contact = contactName, !contact.isEmpty { details += " → \(contact)" }
@@ -317,6 +323,125 @@ final class NudgyToolExecutor {
             toolCallId: toolCallId,
             result: "Remembered: \(fact)",
             sideEffects: [.memoryLearned(fact: fact, category: categoryRaw)]
+        )
+    }
+    
+    // MARK: - Execute Action (from Chat)
+    
+    private func executeExecuteAction(toolCallId: String, args: [String: Any]) -> ToolExecutionResult {
+        let actionTypeRaw = (args["action_type"] as? String ?? "").uppercased()
+        let target = args["target"] as? String ?? ""
+        let taskContent = args["task_content"] as? String ?? ""
+        let draftBody = args["draft_body"] as? String ?? ""
+        let draftSubject = args["draft_subject"] as? String ?? ""
+        let contactName = args["contact_name"] as? String ?? ""
+        
+        print("🧠🔧 execute_action: type=\(actionTypeRaw) target=\(target) contact=\(contactName)")
+        
+        // Try to find matching task first
+        let repo = NudgeRepository(modelContext: modelContext)
+        var matchedItem: NudgeItem?
+        if !taskContent.isEmpty {
+            let active = repo.fetchActiveQueue()
+            matchedItem = active.first { $0.content.lowercased().contains(taskContent.lowercased()) }
+        }
+        
+        // Post execution notification with all context
+        var userInfo: [String: Any] = [
+            "actionType": actionTypeRaw,
+            "target": target,
+            "contactName": contactName,
+            "draftBody": draftBody,
+            "draftSubject": draftSubject
+        ]
+        if let item = matchedItem {
+            userInfo["itemID"] = item.id.uuidString
+            // Update draft on the item if provided
+            if !draftBody.isEmpty {
+                item.aiDraft = draftBody
+                if !draftSubject.isEmpty { item.aiDraftSubject = draftSubject }
+                item.draftGeneratedAt = Date()
+                try? modelContext.save()
+            }
+        }
+        
+        NotificationCenter.default.post(
+            name: .nudgeChatExecuteAction,
+            object: nil,
+            userInfo: userInfo
+        )
+        
+        HapticService.shared.actionButtonTap()
+        
+        let actionLabel: String
+        switch actionTypeRaw {
+        case "CALL": actionLabel = "Opening phone to call \(contactName.isEmpty ? target : contactName)"
+        case "TEXT": actionLabel = "Opening Messages for \(contactName.isEmpty ? target : contactName) with your draft"
+        case "EMAIL": actionLabel = "Opening Mail to \(contactName.isEmpty ? target : contactName) with your draft"
+        case "SEARCH": actionLabel = "Opening search for '\(target)' in the app"
+        case "NAVIGATE": actionLabel = "Getting directions to \(target)"
+        case "LINK": actionLabel = "Opening \(target) in the browser"
+        default: actionLabel = "Executing action"
+        }
+        
+        return ToolExecutionResult(
+            toolCallId: toolCallId,
+            result: "\(actionLabel). ✅",
+            sideEffects: [.actionExecuted(actionType: actionTypeRaw, target: target)]
+        )
+    }
+    
+    // MARK: - Generate Draft (from Chat)
+    
+    private func executeGenerateDraft(toolCallId: String, args: [String: Any]) -> ToolExecutionResult {
+        let draftType = args["draft_type"] as? String ?? "text"
+        let recipientName = args["recipient_name"] as? String ?? ""
+        let subject = args["subject"] as? String
+        let body = args["body"] as? String ?? ""
+        let context = args["context"] as? String ?? ""
+        
+        print("🧠🔧 generate_draft: type=\(draftType) to=\(recipientName) context=\(context)")
+        
+        guard !body.isEmpty else {
+            return ToolExecutionResult(
+                toolCallId: toolCallId,
+                result: "Draft body is empty. Please provide the message content.",
+                sideEffects: []
+            )
+        }
+        
+        // Post notification with draft data for the chat UI to show a review card
+        NotificationCenter.default.post(
+            name: .nudgeChatExecuteAction,
+            object: nil,
+            userInfo: [
+                "actionType": draftType == "email" ? "EMAIL_DRAFT" : "TEXT_DRAFT",
+                "contactName": recipientName,
+                "draftBody": body,
+                "draftSubject": subject ?? ""
+            ]
+        )
+        
+        var resultLines = [String]()
+        if draftType == "email" {
+            resultLines.append("📧 Email draft for \(recipientName):")
+            if let subject, !subject.isEmpty {
+                resultLines.append("Subject: \(subject)")
+            }
+            resultLines.append("---")
+            resultLines.append(body)
+        } else {
+            resultLines.append("💬 Text draft for \(recipientName):")
+            resultLines.append("---")
+            resultLines.append(body)
+        }
+        resultLines.append("---")
+        resultLines.append("Draft ready. Ask the user if they want to send it or make changes.")
+        
+        return ToolExecutionResult(
+            toolCallId: toolCallId,
+            result: resultLines.joined(separator: "\n"),
+            sideEffects: [.draftGenerated(type: draftType, recipient: recipientName, body: body, subject: subject)]
         )
     }
     

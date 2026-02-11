@@ -132,8 +132,7 @@ struct PickedTaskCard: View {
                 
                 // The picked task
                 VStack(spacing: DesignTokens.spacingMD) {
-                    Text(item.emoji ?? "📌")
-                        .font(.system(size: 44))
+                    TaskIconView(emoji: item.emoji, actionType: item.actionType, size: .large, accentColor: DesignTokens.accentActive)
                         .scaleEffect(appeared ? 1.0 : 0.3)
                         .opacity(appeared ? 1 : 0)
                     
@@ -156,7 +155,7 @@ struct PickedTaskCard: View {
                     }
                     
                     if item.isStale {
-                        Text(String(localized: "\(item.ageInDays) days old — let's knock it out!"))
+                        Text(String(localized: "\(item.ageInDays) days old — been here a while 🧊"))
                             .font(AppTheme.footnote)
                             .foregroundStyle(DesignTokens.accentStale)
                     }
@@ -230,43 +229,22 @@ struct PickedTaskCard: View {
             }
             .padding(DesignTokens.spacingXL)
             .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 24)
-                        .fill(.ultraThinMaterial)
-                    
-                    RoundedRectangle(cornerRadius: 24)
-                        .fill(DesignTokens.cardSurface.opacity(0.85))
-                    
-                    // Animated accent glow
-                    RoundedRectangle(cornerRadius: 24)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(hex: "5E5CE6").opacity(0.08 + glowPhase * 0.04),
-                                    DesignTokens.accentActive.opacity(0.04),
-                                    .clear
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+                // Accent glow visible through glass
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(hex: "5E5CE6").opacity(0.08 + glowPhase * 0.04),
+                                DesignTokens.accentActive.opacity(0.04),
+                                .clear
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                    
-                    RoundedRectangle(cornerRadius: 24)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    Color(hex: "5E5CE6").opacity(0.3),
-                                    DesignTokens.accentActive.opacity(0.15),
-                                    Color.white.opacity(0.04)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.5
-                        )
-                }
-                .shadow(color: Color(hex: "5E5CE6").opacity(0.2), radius: 30, y: 8)
+                    )
             }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24))
+            .shadow(color: Color(hex: "5E5CE6").opacity(0.15), radius: 24, y: 8)
             .padding(.horizontal, DesignTokens.spacingXL)
             .scaleEffect(appeared ? 1.0 : 0.85)
             .opacity(appeared ? 1 : 0)
@@ -289,18 +267,8 @@ struct PickedTaskCard: View {
     // MARK: - Pick Messages
     
     private var pickMessage: String {
-        let messages = [
-            String(localized: "How about this one? 🐧"),
-            String(localized: "This feels like a good one to start with!"),
-            String(localized: "Let's do this one — you got it! 💪"),
-            String(localized: "I picked this for you. No pressure! 🎲"),
-            String(localized: "Start here. Just this one thing."),
-            String(localized: "This one's calling your name! ✨"),
-            String(localized: "Easy pick — just knock this out real quick."),
-        ]
-        // Use item id hash for consistent-per-item message
-        let index = abs(item.id.hashValue) % messages.count
-        return messages[index]
+        // Use SmartPickEngine's contextual reason — already in Nudgy's voice
+        SmartPickEngine.reason(for: item)
     }
 }
 
