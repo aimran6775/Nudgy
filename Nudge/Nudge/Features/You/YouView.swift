@@ -28,8 +28,6 @@ struct YouView: View {
     // Sheets
     @State private var showSettings = false
     @State private var showDailyReview = false
-    @State private var showFullCheckIn = false
-    @State private var showFullAquarium = false
 
     // Mood (quick check-in)
     @State private var todayMood: MoodLevel?
@@ -42,29 +40,23 @@ struct YouView: View {
     @State private var moodInsightText: String?
     @State private var isLoadingInsight = false
 
+    // Catch ceremony
+    @State private var showCatchCeremony = false
+    @State private var ceremonyCatch: FishCatch?
+
+    // Ambient background
+    @State private var breatheAnimation = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     // Mood entries for insight generation
     @Query(sort: \MoodEntry.loggedAt, order: .reverse) private var recentMoodEntries: [MoodEntry]
 
     var body: some View {
         NavigationStack {
             ZStack {
-                // Background
-                ZStack {
-                    Color.black.ignoresSafeArea()
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [DesignTokens.accentActive.opacity(0.04), .clear],
-                                center: .center,
-                                startRadius: 0,
-                                endRadius: 160
-                            )
-                        )
-                        .frame(width: 320, height: 320)
-                        .offset(x: 80, y: -100)
-                        .blur(radius: 60)
-                }
-                .ignoresSafeArea()
+                // Ambient Antarctic background (matches Nudgy + Nudges tabs)
+                youAmbientBackground
+                    .ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: DesignTokens.spacingLG) {
@@ -118,6 +110,10 @@ struct YouView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+
+                        // MARK: Streak & Feeding
+
+                        streakAndFeedingCard
 
                         // MARK: Quick Mood Check-In
 
@@ -247,10 +243,27 @@ struct YouView: View {
             DailyReviewView()
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
+        .overlay {
+            if showCatchCeremony, let catchItem = ceremonyCatch {
+                CatchCeremonyOverlay(fishCatch: catchItem) {
+                    showCatchCeremony = false
+                    ceremonyCatch = nil
+                }
+                .transition(.opacity)
+            }
+        }
+        .onChange(of: rewardService.lastFishCatch?.id) { _, _ in
+            guard let catchItem = rewardService.lastFishCatch else { return }
+            ceremonyCatch = catchItem
+            withAnimation(.easeOut(duration: 0.2)) {
+                showCatchCeremony = true
+            }
+        }
         .onAppear {
             avatarService.loadFromMeCard()
             loadTodayMood()
             loadMoodInsight()
+            breatheAnimation = true
         }
         .onChange(of: selectedPhotoItem) { _, newItem in
             guard let newItem else { return }
@@ -267,7 +280,7 @@ struct YouView: View {
     // MARK: - Avatar Header
 
     private var avatarHeader: some View {
-        VStack(spacing: DesignTokens.spacingSM) {
+        HStack(spacing: DesignTokens.spacingMD) {
             Menu {
                 Button {
                     showMemojiPicker = true
@@ -295,10 +308,9 @@ struct YouView: View {
                         Image(uiImage: image)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 88, height: 88)
+                            .frame(width: 48, height: 48)
                             .clipShape(Circle())
                     } else {
-                        // Initials or generic person fallback
                         Circle()
                             .fill(
                                 LinearGradient(
@@ -307,15 +319,15 @@ struct YouView: View {
                                     endPoint: .bottomTrailing
                                 )
                             )
-                            .frame(width: 88, height: 88)
+                            .frame(width: 48, height: 48)
                             .overlay {
                                 if !settings.userName.isEmpty {
                                     Text(String(settings.userName.prefix(1)).uppercased())
-                                        .font(.system(size: 36, weight: .semibold, design: .rounded))
+                                        .font(.system(size: 20, weight: .semibold, design: .rounded))
                                         .foregroundStyle(DesignTokens.textPrimary)
                                 } else {
                                     Image(systemName: "person.fill")
-                                        .font(.system(size: 32))
+                                        .font(.system(size: 20))
                                         .foregroundStyle(DesignTokens.textSecondary)
                                 }
                             }
@@ -324,17 +336,17 @@ struct YouView: View {
                     // Edit badge
                     Circle()
                         .fill(DesignTokens.cardSurface)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 18, height: 18)
                         .overlay {
                             Image(systemName: "camera.fill")
-                                .font(.system(size: 12))
+                                .font(.system(size: 8))
                                 .foregroundStyle(DesignTokens.accentActive)
                         }
                         .overlay {
                             Circle()
-                                .strokeBorder(Color.black, lineWidth: 2)
+                                .strokeBorder(Color.black, lineWidth: 1.5)
                         }
-                        .offset(x: 30, y: 30)
+                        .offset(x: 16, y: 16)
                 }
             }
             .buttonStyle(.plain)
@@ -344,13 +356,145 @@ struct YouView: View {
                 traits: .isButton
             )
 
-            // Name below avatar
-            if !settings.userName.isEmpty {
-                Text(settings.userName)
-                    .font(AppTheme.headline)
-                    .foregroundStyle(DesignTokens.textPrimary)
+            VStack(alignment: .leading, spacing: 2) {
+                if !settings.userName.isEmpty {
+                    Text(settings.userName)
+                        .font(AppTheme.headline)
+                        .foregroundStyle(DesignTokens.textPrimary)
+                } else {
+                    Text(String(localized: "Your Space"))
+                        .font(AppTheme.headline)
+                        .foregroundStyle(DesignTokens.textPrimary)
+                }
+
+                HStack(spacing: 6) {
+                    HStack(spacing: 2) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color(hex: "FF6B35"))
+                        Text(String(localized: "\(rewardService.currentStreak) day streak"))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(DesignTokens.textTertiary)
+                    }
+
+                    Text("·")
+                        .foregroundStyle(DesignTokens.textTertiary.opacity(0.5))
+
+                    HStack(spacing: 2) {
+                        Image(systemName: "snowflake")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color(hex: "4FC3F7"))
+                        Text("\(rewardService.snowflakes)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(DesignTokens.textTertiary)
+                    }
+                }
             }
+
+            Spacer()
         }
+    }
+
+    // MARK: - Streak & Feeding Card
+
+    private var streakAndFeedingCard: some View {
+        let taskStreak = rewardService.currentStreak
+        let feedStreak = rewardService.feedingStreak
+        let happiness = rewardService.fishHappiness
+        let fedToday = rewardService.fishFedToday
+
+        return HStack(spacing: DesignTokens.spacingMD) {
+            // Task completion streak
+            VStack(spacing: 6) {
+                HStack(spacing: 4) {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(
+                            taskStreak >= 7
+                                ? Color(hex: "FF6B35")
+                                : taskStreak >= 3
+                                    ? Color(hex: "FFB74D")
+                                    : DesignTokens.textTertiary
+                        )
+                    Text("\(taskStreak)")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(DesignTokens.textPrimary)
+                }
+                Text(String(localized: "Day Streak"))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(DesignTokens.textTertiary)
+
+                if taskStreak >= 3 {
+                    Text(String(localized: "2× ❄️"))
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color(hex: "4FC3F7"))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, DesignTokens.spacingSM)
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+
+            // Feeding streak
+            VStack(spacing: 6) {
+                HStack(spacing: 4) {
+                    // Hearts for happiness
+                    HStack(spacing: 2) {
+                        ForEach(0..<3, id: \.self) { i in
+                            Image(systemName: Double(i) < happiness * 3.0 ? "heart.fill" : "heart")
+                                .font(.system(size: 10))
+                                .foregroundStyle(
+                                    Double(i) < happiness * 3.0
+                                        ? Color(hex: "FF6B6B")
+                                        : Color.white.opacity(0.2)
+                                )
+                        }
+                    }
+                }
+                Text(String(localized: "Fed \(fedToday)/3 today"))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(DesignTokens.textTertiary)
+
+                if feedStreak >= 2 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(Color(hex: "FF6B35"))
+                        Text(String(localized: "\(feedStreak)d feed streak"))
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color(hex: "FFB74D"))
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, DesignTokens.spacingSM)
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+
+            // Snowflake balance
+            VStack(spacing: 6) {
+                HStack(spacing: 4) {
+                    Image(systemName: "snowflake")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color(hex: "4FC3F7"))
+                    Text("\(rewardService.snowflakes)")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(DesignTokens.textPrimary)
+                }
+                Text(String(localized: "Snowflakes"))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(DesignTokens.textTertiary)
+
+                Text(String(localized: "Lv.\(rewardService.level)"))
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(hex: "FFD54F"))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, DesignTokens.spacingSM)
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+        }
+        .nudgeAccessibility(
+            label: String(localized: "Streak: \(taskStreak) days, Fed \(fedToday) of 3, \(rewardService.snowflakes) snowflakes"),
+            hint: String(localized: "Your progress stats")
+        )
     }
 
     // MARK: - Aquarium Progress Bar
@@ -694,6 +838,47 @@ struct YouView: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Ambient Background
+
+    private var youAmbientBackground: some View {
+        GeometryReader { geo in
+            ZStack {
+                AntarcticEnvironment(
+                    mood: RewardService.shared.environmentMood,
+                    unlockedProps: RewardService.shared.unlockedProps,
+                    fishCount: RewardService.shared.snowflakes,
+                    level: RewardService.shared.level,
+                    stage: StageTier.from(level: RewardService.shared.level),
+                    sceneWidth: geo.size.width,
+                    sceneHeight: geo.size.height
+                )
+
+                // Subtle breathing glow — slightly dimmer than Nudgy tab
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                DesignTokens.accentActive.opacity(breatheAnimation ? 0.04 : 0.01),
+                                .clear
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 200
+                        )
+                    )
+                    .frame(width: 400, height: 400)
+                    .blur(radius: 80)
+                    .offset(y: -geo.size.height * 0.15)
+                    .animation(
+                        reduceMotion
+                            ? nil
+                            : .easeInOut(duration: 5).repeatForever(autoreverses: true),
+                        value: breatheAnimation
+                    )
+            }
+        }
     }
 }
 

@@ -6,7 +6,8 @@
 //  on the ice shelf. The fish count matches earned fish today from
 //  RewardService. Fish scatter on tap and swim back slowly.
 //
-//  Uses FishView from IntroVectorShapes for the bezier-drawn fish art.
+//  Uses AnimatedFishView from IntroVectorShapes for the bezier-drawn
+//  fish art with smooth tail wag. TimelineView drives 60fps updates.
 //
 
 import SwiftUI
@@ -24,6 +25,7 @@ struct SwimmingFish: Identifiable {
     var amplitude: CGFloat     // vertical bob amplitude
     var flipped: Bool          // swim direction (true = left-facing)
     var opacity: Double
+    var phaseOffset: Double    // unique per-fish for desynchronization
     var scatterOffset: CGSize = .zero
     var isScattering: Bool = false
 }
@@ -39,7 +41,6 @@ struct AmbientFishScene: View {
     var onTap: (() -> Void)?
 
     @State private var fish: [SwimmingFish] = []
-    @State private var swimPhase: CGFloat = 0
     @State private var isScattered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -60,9 +61,13 @@ struct AmbientFishScene: View {
     }
 
     var body: some View {
-        ZStack {
-            ForEach(fish) { f in
-                fishBody(f)
+        SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+
+            ZStack {
+                ForEach(fish) { f in
+                    fishBody(f, time: time)
+                }
             }
         }
         .allowsHitTesting(true)
@@ -73,8 +78,6 @@ struct AmbientFishScene: View {
         }
         .onAppear {
             spawnFish()
-            guard !reduceMotion else { return }
-            startSwimCycle()
         }
         .onChange(of: fishEarned) { _, _ in
             respawnIfNeeded()
@@ -84,22 +87,62 @@ struct AmbientFishScene: View {
     // MARK: - Fish Body
 
     @ViewBuilder
-    private func fishBody(_ f: SwimmingFish) -> some View {
-        let phase: Double = swimPhase * .pi * 2
-        let phaseOffset: Double = phase / f.speed + Double(f.x) * 0.01
-        let sinWave: CGFloat = CGFloat(sin(phaseOffset)) * f.amplitude
-        let yOffset: CGFloat = reduceMotion ? 0 : sinWave
-        let combinedY: CGFloat = yOffset + f.scatterOffset.height
-        let anim: Animation = f.isScattering
-            ? .spring(response: 0.3, dampingFraction: 0.5)
-            : .easeInOut(duration: f.speed * 0.5)
+    private func fishBody(_ f: SwimmingFish, time: Double) -> some View {
+        let pos = swimPosition(for: f, time: time)
+        let tailWag = tailWagPhase(for: f, time: time)
 
-        FishView(size: f.size, color: f.color, accentColor: f.accentColor)
-            .scaleEffect(x: f.flipped ? -1 : 1, y: 1)
-            .opacity(f.opacity)
-            .offset(x: f.scatterOffset.width, y: combinedY)
-            .position(x: f.x, y: f.y)
-            .animation(anim, value: f.scatterOffset)
+        AnimatedFishView(
+            size: f.size,
+            color: f.color,
+            accentColor: f.accentColor,
+            tailPhase: tailWag
+        )
+        .scaleEffect(x: f.flipped ? -1 : 1, y: 1)
+        .opacity(f.opacity)
+        .offset(x: f.scatterOffset.width, y: f.scatterOffset.height)
+        .position(x: pos.x, y: pos.y)
+    }
+
+    // MARK: - Swim Physics
+
+    private func swimPosition(for f: SwimmingFish, time: Double) -> CGPoint {
+        guard !reduceMotion else {
+            return CGPoint(x: f.x, y: f.y)
+        }
+
+        let phase = time * .pi * 2
+        let xPhase = phase / f.speed + f.phaseOffset
+        let yPhase = phase / (f.speed * 0.7) + f.phaseOffset
+
+        // Horizontal: sin wave drift + slow cruise
+        let cruise = CGFloat(time.truncatingRemainder(dividingBy: f.speed * 14.0) / (f.speed * 14.0))
+        let dx = CGFloat(sin(xPhase)) * (sceneWidth * 0.04)
+        let cruiseOffset = cruise * sceneWidth * 0.10 * (f.flipped ? -1 : 1)
+
+        // Vertical: gentle bob
+        let dy = CGFloat(cos(yPhase)) * f.amplitude
+
+        let baseX = f.x + dx + cruiseOffset
+        let baseY = f.y + dy
+
+        // Wrap horizontal — fish swim off one side, reappear on the other
+        let wrappedX: CGFloat
+        if baseX < -30 {
+            wrappedX = baseX + sceneWidth + 60
+        } else if baseX > sceneWidth + 30 {
+            wrappedX = baseX - sceneWidth - 60
+        } else {
+            wrappedX = baseX
+        }
+
+        return CGPoint(x: wrappedX, y: baseY)
+    }
+
+    private func tailWagPhase(for f: SwimmingFish, time: Double) -> CGFloat {
+        guard !reduceMotion else { return 0 }
+        // Faster fish wag their tails more quickly
+        let wagSpeed = 3.0 + (6.0 - f.speed) * 0.6
+        return CGFloat(sin(time * wagSpeed + f.phaseOffset))
     }
 
     // MARK: - Spawning
@@ -119,7 +162,8 @@ struct AmbientFishScene: View {
                 speed: Double.random(in: 3.0...6.0),
                 amplitude: CGFloat.random(in: 4...10),
                 flipped: flipped,
-                opacity: Double.random(in: 0.5...0.8)
+                opacity: Double.random(in: 0.5...0.8),
+                phaseOffset: Double.random(in: 0...(.pi * 2))
             )
         }
     }
@@ -139,7 +183,8 @@ struct AmbientFishScene: View {
                     speed: Double.random(in: 3.0...6.0),
                     amplitude: CGFloat.random(in: 4...10),
                     flipped: Bool.random(),
-                    opacity: 0
+                    opacity: 0,
+                    phaseOffset: Double.random(in: 0...(.pi * 2))
                 )
                 fish.append(newFish)
                 // Fade in
@@ -165,29 +210,6 @@ struct AmbientFishScene: View {
         }
     }
 
-    // MARK: - Swim Cycle
-
-    private func startSwimCycle() {
-        Task { @MainActor in
-            while true {
-                try? await Task.sleep(for: .seconds(1.0 / 30.0))
-                swimPhase += 1.0 / 30.0
-
-                // Gentle horizontal drift
-                for i in fish.indices {
-                    let drift = CGFloat.random(in: -0.15...0.15)
-                    fish[i].x += drift
-                    // Wrap around edges
-                    if fish[i].x < -20 {
-                        fish[i].x = sceneWidth + 15
-                    } else if fish[i].x > sceneWidth + 20 {
-                        fish[i].x = -15
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: - Scatter
 
     private func scatterFish() {
@@ -201,6 +223,10 @@ struct AmbientFishScene: View {
             let scatterY = CGFloat.random(in: -40...40)
             withAnimation(.spring(response: 0.25, dampingFraction: 0.4)) {
                 fish[i].scatterOffset = CGSize(width: scatterX, height: scatterY)
+            }
+            // Flip some fish on scatter (startled direction change)
+            if Bool.random() {
+                fish[i].flipped.toggle()
             }
         }
 

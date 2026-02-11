@@ -29,6 +29,13 @@ struct ContentView: View {
     @State private var hasOverdueTasks: Bool = false
     @State private var allClear: Bool = false
     @State private var repository: NudgeRepository?
+    
+    // Option A: Tab bar Nudgy chomp
+    @State private var showTabChomp = false
+    @State private var tabChompSpecies: FishSpecies? = nil
+    
+    // Option C: Pending fish for penguin tab
+    @State private var pendingFishCount: Int = 0
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AppSettings.self) private var settings
@@ -54,27 +61,41 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            Tab(value: NudgeTab.nudgy) {
-                NudgyHomeView()
-            } label: {
-                Label {
-                    Text(String(localized: "Nudgy"))
-                } icon: {
-                    Image("PenguinTab")
-                        .renderingMode(.template)
+        ZStack(alignment: .bottom) {
+            TabView(selection: $selectedTab) {
+                Tab(value: NudgeTab.nudgy) {
+                    NudgyHomeView()
+                } label: {
+                    Label {
+                        Text(String(localized: "Nudgy"))
+                    } icon: {
+                        Image("PenguinTab")
+                            .renderingMode(.template)
+                    }
+                }
+
+                Tab(String(localized: "Nudges"), systemImage: nudgesTabIcon, value: NudgeTab.nudges) {
+                    NudgesView()
+                }
+                .badge(smartBadge)
+
+                Tab(String(localized: "You"), systemImage: "person.fill", value: NudgeTab.you) {
+                    YouView()
                 }
             }
-
-            Tab(String(localized: "Nudges"), systemImage: nudgesTabIcon, value: NudgeTab.nudges) {
-                NudgesView()
+            // Option A: Tab bar Nudgy chomp overlay
+            if showTabChomp {
+                GeometryReader { geo in
+                    TabBarNudgyChomp(isActive: $showTabChomp, species: tabChompSpecies)
+                        .position(
+                            x: geo.size.width / 6, // ~first tab position
+                            y: geo.size.height - 60
+                        )
+                }
+                .allowsHitTesting(false)
+                .zIndex(999)
             }
-            .badge(smartBadge)
-
-            Tab(String(localized: "You"), systemImage: "person.fill", value: NudgeTab.you) {
-                YouView()
-            }
-        }
+        } // end ZStack
         .preferredColorScheme(.dark)
         .fullScreenCover(isPresented: $showBrainDump) {
             BrainDumpView(isPresented: $showBrainDump)
@@ -105,6 +126,21 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .nudgeAddToCalendar)) { notification in
             handleAddToCalendar(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .nudgeTabChomp)) { notification in
+            // Option A: Tab bar Nudgy chomp when task completed on Nudges tab
+            if let speciesName = notification.userInfo?["species"] as? String {
+                tabChompSpecies = FishSpecies.allCases.first { $0.label == speciesName }
+            } else {
+                tabChompSpecies = .catfish
+            }
+            showTabChomp = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .nudgePendingFish)) { notification in
+            // Option C: Accumulate pending fish for penguin tab
+            let count = notification.userInfo?["count"] as? Int ?? 1
+            pendingFishCount += count
+            penguinState.pendingFishToMunch += count
         }
         .onAppear {
             setupRepository()

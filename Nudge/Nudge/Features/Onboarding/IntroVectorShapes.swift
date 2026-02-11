@@ -134,6 +134,172 @@ struct FishView: View {
     }
 }
 
+// MARK: - Animated Fish Shape (Tail Wag)
+
+/// Fish body with animatable tail wag via `tailPhase`.
+/// The tail fork bends left/right based on `tailPhase` (expected range -1...1).
+struct AnimatedFishShape: Shape {
+    var tailPhase: CGFloat  // -1…1 range, 0 = centered
+
+    var animatableData: CGFloat {
+        get { tailPhase }
+        set { tailPhase = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        // Tail deflection — how far tail control points shift vertically
+        let tailDeflect = h * 0.06 * tailPhase
+
+        return Path { p in
+            // Body — egg/oval, slightly pointed at mouth
+            p.move(to: CGPoint(x: w * 0.72, y: h * 0.5))
+
+            // Top curve of body (mouth → dorsal → back)
+            p.addCurve(
+                to: CGPoint(x: w * 0.32, y: h * 0.18),
+                control1: CGPoint(x: w * 0.72, y: h * 0.25),
+                control2: CGPoint(x: w * 0.55, y: h * 0.15)
+            )
+
+            // Connect to tail (top) — wag shifts this control point
+            p.addCurve(
+                to: CGPoint(x: w * 0.08, y: h * 0.12 + tailDeflect),
+                control1: CGPoint(x: w * 0.20, y: h * 0.20),
+                control2: CGPoint(x: w * 0.12, y: h * 0.15 + tailDeflect * 0.5)
+            )
+
+            // Tail fork top
+            p.addCurve(
+                to: CGPoint(x: w * 0.18, y: h * 0.42),
+                control1: CGPoint(x: w * 0.02, y: h * 0.22 + tailDeflect),
+                control2: CGPoint(x: w * 0.10, y: h * 0.38)
+            )
+
+            // Tail center notch
+            p.addCurve(
+                to: CGPoint(x: w * 0.18, y: h * 0.58),
+                control1: CGPoint(x: w * 0.15, y: h * 0.48),
+                control2: CGPoint(x: w * 0.15, y: h * 0.52)
+            )
+
+            // Tail fork bottom
+            p.addCurve(
+                to: CGPoint(x: w * 0.08, y: h * 0.88 + tailDeflect),
+                control1: CGPoint(x: w * 0.10, y: h * 0.62),
+                control2: CGPoint(x: w * 0.02, y: h * 0.78 + tailDeflect)
+            )
+
+            // Connect from tail → bottom of body
+            p.addCurve(
+                to: CGPoint(x: w * 0.32, y: h * 0.82),
+                control1: CGPoint(x: w * 0.12, y: h * 0.85 + tailDeflect * 0.5),
+                control2: CGPoint(x: w * 0.20, y: h * 0.80)
+            )
+
+            // Bottom curve of body (back → belly → mouth)
+            p.addCurve(
+                to: CGPoint(x: w * 0.72, y: h * 0.5),
+                control1: CGPoint(x: w * 0.55, y: h * 0.85),
+                control2: CGPoint(x: w * 0.72, y: h * 0.75)
+            )
+
+            p.closeSubpath()
+        }
+    }
+}
+
+/// Fish view with animated tail wag driven by a phase value.
+/// Use inside aquarium/tank for lively swimming animation.
+struct AnimatedFishView: View {
+    var size: CGFloat = 32
+    var color: Color = Color(hex: "4FC3F7")
+    var accentColor: Color = Color(hex: "0288D1")
+    /// Tail wag phase — expected range -1…1, oscillates via sin wave.
+    var tailPhase: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            // Body fill with animated tail
+            AnimatedFishShape(tailPhase: tailPhase)
+                .fill(
+                    LinearGradient(
+                        colors: [color, accentColor],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            // Sheen highlight
+            AnimatedFishShape(tailPhase: tailPhase)
+                .fill(
+                    RadialGradient(
+                        colors: [Color.white.opacity(0.25), Color.clear],
+                        center: UnitPoint(x: 0.55, y: 0.3),
+                        startRadius: 0,
+                        endRadius: size * 0.35
+                    )
+                )
+
+            // Dorsal fin with subtle wag
+            DorsalFinShape()
+                .fill(accentColor.opacity(0.7))
+                .frame(width: size * 0.25, height: size * 0.2)
+                .rotationEffect(.degrees(Double(tailPhase) * -3))
+                .offset(x: size * 0.02, y: -size * 0.25)
+
+            // Pectoral fin (bottom)
+            PectoralFinShape()
+                .fill(accentColor.opacity(0.4))
+                .frame(width: size * 0.15, height: size * 0.12)
+                .rotationEffect(.degrees(Double(tailPhase) * 8))
+                .offset(x: size * 0.06, y: size * 0.12)
+
+            // Eye
+            Circle()
+                .fill(Color(hex: "0A0A0E"))
+                .frame(width: size * 0.13, height: size * 0.13)
+                .offset(x: size * 0.17, y: -size * 0.04)
+
+            // Eye glint
+            Circle()
+                .fill(Color.white.opacity(0.9))
+                .frame(width: size * 0.05, height: size * 0.05)
+                .offset(x: size * 0.19, y: -size * 0.06)
+
+            // Gill mark
+            GillMarkShape()
+                .stroke(accentColor.opacity(0.5), lineWidth: max(1, size * 0.03))
+                .frame(width: size * 0.08, height: size * 0.15)
+                .offset(x: size * 0.08, y: size * 0.02)
+        }
+        .frame(width: size, height: size * 0.65)
+    }
+}
+
+/// Small pectoral fin curve (bottom of fish body).
+private struct PectoralFinShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        return Path { p in
+            p.move(to: CGPoint(x: 0, y: 0))
+            p.addCurve(
+                to: CGPoint(x: w * 0.8, y: h),
+                control1: CGPoint(x: w * 0.4, y: 0),
+                control2: CGPoint(x: w * 0.7, y: h * 0.5)
+            )
+            p.addCurve(
+                to: CGPoint(x: 0, y: 0),
+                control1: CGPoint(x: w * 0.3, y: h * 0.8),
+                control2: CGPoint(x: 0, y: h * 0.4)
+            )
+            p.closeSubpath()
+        }
+    }
+}
+
 /// Small dorsal fin curve.
 private struct DorsalFinShape: Shape {
     func path(in rect: CGRect) -> Path {

@@ -102,6 +102,26 @@ final class RewardService {
     /// The most recent fish catch (for animation).
     private(set) var lastFishCatch: FishCatch? = nil
     
+    /// Unlocked tank decoration IDs.
+    private(set) var unlockedDecorations: Set<String> = []
+    
+    /// Currently placed (visible) tank decoration IDs.
+    private(set) var placedDecorations: Set<String> = []
+    
+    /// Times fish were fed today.
+    private(set) var fishFedToday: Int = 0
+    
+    /// Consecutive days of feeding fish.
+    private(set) var feedingStreak: Int = 0
+    
+    /// Longest feeding streak ever.
+    private(set) var longestFeedingStreak: Int = 0
+    
+    /// Fish happiness level (0.0–1.0) based on feeding today.
+    var fishHappiness: Double {
+        min(Double(fishFedToday) / 3.0, 1.0)
+    }
+    
     /// Date the current set of daily challenges was generated.
     private var challengeDate: Date? = nil
     
@@ -165,6 +185,10 @@ final class RewardService {
         // Save and sync
         try? context.save()
         syncState(from: wardrobe)
+        
+        // Check streak milestone bonus (3, 7, 14, 30 day rewards)
+        let streakBonus = checkStreakMilestoneBonus(context: context)
+        earned += streakBonus
         
         let newStage = StageTier.from(level: wardrobe.level)
         if newStage.rawValue > oldStage.rawValue {
@@ -354,9 +378,153 @@ final class RewardService {
         tasksCompletedToday = wardrobe.tasksCompletedToday
         environmentMood = wardrobe.environmentMood
         fishCatches = wardrobe.fishCatches
+        unlockedDecorations = wardrobe.unlockedDecorations
+        placedDecorations = wardrobe.placedDecorations
+        fishFedToday = wardrobe.fishFedToday
+        feedingStreak = wardrobe.feedingStreak
+        longestFeedingStreak = wardrobe.longestFeedingStreak
         
         // Regenerate challenges if new day
         regenerateChallengesIfNeeded()
+    }
+    
+    // MARK: - Feeding
+    
+    /// Record a fish feeding. Awards snowflakes for feeding streaks.
+    /// Returns snowflakes earned from feeding bonus (0 if none).
+    @discardableResult
+    func recordFeeding(context: ModelContext) -> Int {
+        let wardrobe = fetchOrCreateWardrobe(context: context)
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        
+        // Reset daily counter if new day
+        if let lastFed = wardrobe.lastFedDateRaw {
+            let lastFedDay = calendar.startOfDay(for: lastFed)
+            if lastFedDay != today {
+                wardrobe.fishFedToday = 0
+                
+                // Update feeding streak
+                let daysDiff = calendar.dateComponents([.day], from: lastFedDay, to: today).day ?? 0
+                if daysDiff == 1 {
+                    wardrobe.feedingStreak += 1
+                } else if daysDiff > 1 {
+                    wardrobe.feedingStreak = 1
+                }
+            }
+        } else {
+            // First ever feed
+            wardrobe.feedingStreak = 1
+        }
+        
+        wardrobe.fishFedToday += 1
+        wardrobe.lastFedDateRaw = .now
+        wardrobe.longestFeedingStreak = max(wardrobe.longestFeedingStreak, wardrobe.feedingStreak)
+        
+        // Streak bonus snowflakes
+        var bonus = 0
+        
+        // First feed of the day: streak milestone bonus
+        if wardrobe.fishFedToday == 1 {
+            if wardrobe.feedingStreak >= 7 {
+                bonus = 5  // 7+ day feeding streak: +5 ❄️
+            } else if wardrobe.feedingStreak >= 3 {
+                bonus = 2  // 3+ day feeding streak: +2 ❄️
+            }
+        }
+        
+        // Feed 3 times in a day bonus
+        if wardrobe.fishFedToday == 3 {
+            bonus += 3  // Full belly bonus: +3 ❄️
+        }
+        
+        if bonus > 0 {
+            wardrobe.snowflakes += bonus
+            wardrobe.lifetimeSnowflakes += bonus
+        }
+        
+        try? context.save()
+        syncState(from: wardrobe)
+        
+        if bonus > 0 {
+            NotificationCenter.default.post(name: RewardConstants.snowflakesChangedNotification, object: nil)
+        }
+        
+        return bonus
+    }
+    
+    /// Snowflake bonus description for current feeding streak.
+    var feedingStreakBonusLabel: String? {
+        if feedingStreak >= 7 {
+            return String(localized: "+5 ❄️ per day (7-day feeding streak!)")
+        } else if feedingStreak >= 3 {
+            return String(localized: "+2 ❄️ per day (3-day feeding streak)")
+        }
+        return nil
+    }
+    
+    // MARK: - Streak Snowflake Milestones
+    
+    /// Snowflakes bonus for task completion streak milestones.
+    /// Called after streak is updated in recordCompletion.
+    func checkStreakMilestoneBonus(context: ModelContext) -> Int {
+        let wardrobe = fetchOrCreateWardrobe(context: context)
+        let streak = wardrobe.currentStreak
+        var bonus = 0
+        
+        // Streak milestones: 3, 7, 14, 30 days
+        let milestones: [(Int, Int)] = [(3, 5), (7, 15), (14, 30), (30, 75)]
+        for (milestone, reward) in milestones {
+            if streak == milestone {
+                bonus = reward
+                break
+            }
+        }
+        
+        if bonus > 0 {
+            wardrobe.snowflakes += bonus
+            wardrobe.lifetimeSnowflakes += bonus
+            try? context.save()
+            syncState(from: wardrobe)
+        }
+        
+        return bonus
+    }
+    
+    // MARK: - Tank Decorations
+    
+    /// Unlock a tank decoration by spending snowflakes.
+    func unlockDecoration(_ decoID: String, cost: Int, context: ModelContext) {
+        let wardrobe = fetchOrCreateWardrobe(context: context)
+        guard wardrobe.snowflakes >= cost else { return }
+        guard !wardrobe.unlockedDecorations.contains(decoID) else { return }
+        
+        wardrobe.snowflakes -= cost
+        var unlocked = wardrobe.unlockedDecorations
+        unlocked.insert(decoID)
+        wardrobe.unlockedDecorations = unlocked
+        
+        // Auto-place when bought
+        var placed = wardrobe.placedDecorations
+        placed.insert(decoID)
+        wardrobe.placedDecorations = placed
+        
+        try? context.save()
+        syncState(from: wardrobe)
+    }
+    
+    /// Toggle a decoration's placement in the tank.
+    func toggleDecoration(_ decoID: String, context: ModelContext) {
+        let wardrobe = fetchOrCreateWardrobe(context: context)
+        var placed = wardrobe.placedDecorations
+        if placed.contains(decoID) {
+            placed.remove(decoID)
+        } else {
+            placed.insert(decoID)
+        }
+        wardrobe.placedDecorations = placed
+        try? context.save()
+        syncState(from: wardrobe)
     }
     
     // MARK: - Stage Up

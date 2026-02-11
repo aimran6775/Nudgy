@@ -20,6 +20,10 @@ struct DailyProgressHeader: View {
     let completedToday: Int
     let totalToday: Int
     let streak: Int
+    let fishToday: Int
+    let snowflakes: Int
+    let lastSpecies: FishSpecies?
+    var onFishHUDPosition: ((CGPoint) -> Void)? = nil
     
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
@@ -44,6 +48,14 @@ struct DailyProgressHeader: View {
             }
             
             Spacer()
+            
+            // Fish counter HUD (Phase 2)
+            FishCounterHUD(
+                fishToday: fishToday,
+                snowflakes: snowflakes,
+                species: lastSpecies,
+                onPositionChange: onFishHUDPosition
+            )
             
             // Streak badge (if active)
             if streak > 1 {
@@ -181,10 +193,10 @@ struct DailyProgressHeader: View {
     ZStack {
         Color.black.ignoresSafeArea()
         VStack(spacing: 16) {
-            DailyProgressHeader(completedToday: 2, totalToday: 5, streak: 4)
-            DailyProgressHeader(completedToday: 5, totalToday: 5, streak: 7)
-            DailyProgressHeader(completedToday: 0, totalToday: 3, streak: 0)
-            DailyProgressHeader(completedToday: 0, totalToday: 0, streak: 1)
+            DailyProgressHeader(completedToday: 2, totalToday: 5, streak: 4, fishToday: 2, snowflakes: 12, lastSpecies: .tropical)
+            DailyProgressHeader(completedToday: 5, totalToday: 5, streak: 7, fishToday: 5, snowflakes: 42, lastSpecies: .swordfish)
+            DailyProgressHeader(completedToday: 0, totalToday: 3, streak: 0, fishToday: 0, snowflakes: 0, lastSpecies: nil)
+            DailyProgressHeader(completedToday: 0, totalToday: 0, streak: 1, fishToday: 0, snowflakes: 3, lastSpecies: nil)
         }
         .padding()
     }

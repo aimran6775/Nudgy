@@ -76,6 +76,20 @@ struct NudgesView: View {
     // Completion celebration (Phase 7)
     @State private var showCompletionParticles = false
     
+    // Fish reward system (Phases 1-17)
+    @State private var fishHUDPosition: CGPoint = CGPoint(x: 200, y: 80)
+    @State private var lastCompletedItemPosition: CGPoint = CGPoint(x: 200, y: 400)
+    @State private var showSpeciesToast = false
+    @State private var lastEarnedSpecies: FishSpecies? = nil
+    @State private var lastSnowflakesEarned: Int = 0
+    @State private var showNudgyPeek = false
+    @State private var showTransitionOverlay = false
+    @State private var completedTaskContent: String = ""
+    @State private var completedTaskEmoji: String = "checklist"
+    @State private var nextTaskContent: String? = nil
+    @State private var nextTaskEmoji: String? = nil
+    @State private var isAllClearCelebration = false
+    
     // Focus Timer (Phase 3)
     @State private var focusTimerItem: NudgeItem?
     
@@ -83,10 +97,15 @@ struct NudgesView: View {
     @State private var showTimeline = false
     @State private var calendarService = CalendarService.shared
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breatheAnimation = false
+
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                // Ambient Antarctic background (matches Nudgy tab)
+                nudgesAmbientBackground
+                    .ignoresSafeArea()
 
                 if horizonGroups.isEmpty {
                     emptyView
@@ -117,6 +136,47 @@ struct NudgesView: View {
                 if showCompletionParticles {
                     CompletionParticles(isActive: $showCompletionParticles)
                         .allowsHitTesting(false)
+                }
+                
+                // Phase 5: Fish reward flying animation overlay
+                FishRewardOverlay()
+                    .allowsHitTesting(false)
+                
+                // Phase 4: Celebratory fish burst on completion
+                CompletionFishBurst()
+                    .allowsHitTesting(false)
+                
+                // Phase 9: Species toast ("Caught a Tropical Fish!")
+                if showSpeciesToast, let species = lastEarnedSpecies {
+                    SpeciesToast(
+                        species: species,
+                        snowflakesEarned: lastSnowflakesEarned,
+                        isRare: species == .swordfish || species == .whale,
+                        isPresented: $showSpeciesToast
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(50)
+                }
+                
+                // Phase 13: Mini Nudgy peek-munch at bottom
+                VStack {
+                    Spacer()
+                    NudgyPeekMunch(isActive: $showNudgyPeek, species: lastEarnedSpecies)
+                        .padding(.bottom, 70)
+                }
+                .allowsHitTesting(false)
+                .zIndex(40)
+                
+                // Phase 16: Task transition overlay (Done → Next Up)
+                if showTransitionOverlay {
+                    TaskTransitionOverlay(
+                        completedTask: completedTaskContent,
+                        completedEmoji: completedTaskEmoji,
+                        nextTask: nextTaskContent,
+                        nextEmoji: nextTaskEmoji,
+                        isPresented: $showTransitionOverlay
+                    )
+                    .zIndex(60)
                 }
                 
                 // Floating "Pick For Me" button
@@ -204,6 +264,8 @@ struct NudgesView: View {
             syncLiveActivity()
             promptLiveActivityIfNeeded()
             calendarService.fetchTodayEvents()
+            // Start breathing glow animation
+            breatheAnimation = true
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             repository?.resurfaceExpiredSnoozes()
@@ -252,6 +314,47 @@ struct NudgesView: View {
         }
     }
     
+    // MARK: - Ambient Background
+
+    private var nudgesAmbientBackground: some View {
+        GeometryReader { geo in
+            ZStack {
+                AntarcticEnvironment(
+                    mood: RewardService.shared.environmentMood,
+                    unlockedProps: RewardService.shared.unlockedProps,
+                    fishCount: RewardService.shared.snowflakes,
+                    level: RewardService.shared.level,
+                    stage: StageTier.from(level: RewardService.shared.level),
+                    sceneWidth: geo.size.width,
+                    sceneHeight: geo.size.height
+                )
+
+                // Subtle breathing glow
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                DesignTokens.accentActive.opacity(breatheAnimation ? 0.04 : 0.01),
+                                .clear
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 200
+                        )
+                    )
+                    .frame(width: 400, height: 400)
+                    .blur(radius: 80)
+                    .offset(y: geo.size.height * 0.3)
+                    .animation(
+                        reduceMotion
+                            ? nil
+                            : .easeInOut(duration: 5).repeatForever(autoreverses: true),
+                        value: breatheAnimation
+                    )
+            }
+        }
+    }
+
     // MARK: - List Content
 
     private var listContent: some View {
@@ -262,7 +365,13 @@ struct NudgesView: View {
                 DailyProgressHeader(
                     completedToday: horizonGroups.doneToday.count,
                     totalToday: horizonGroups.today.count + horizonGroups.doneToday.count,
-                    streak: RewardService.shared.currentStreak
+                    streak: RewardService.shared.currentStreak,
+                    fishToday: RewardService.shared.tasksCompletedToday,
+                    snowflakes: RewardService.shared.snowflakes,
+                    lastSpecies: lastEarnedSpecies,
+                    onFishHUDPosition: { pos in
+                        fishHUDPosition = pos
+                    }
                 )
                 
                 // Live Activity opt-in prompt
@@ -450,6 +559,25 @@ struct NudgesView: View {
                                 onContentChanged: { refreshData() }
                             )
                             .padding(.top, 1)
+                        }
+                    }
+                    .background {
+                        // Track item position for fish burst origin
+                        GeometryReader { itemGeo in
+                            Color.clear
+                                .onAppear {
+                                    // Cache the last known row center
+                                    lastCompletedItemPosition = CGPoint(
+                                        x: itemGeo.frame(in: .global).midX,
+                                        y: itemGeo.frame(in: .global).midY
+                                    )
+                                }
+                                .onChange(of: itemGeo.frame(in: .global).midY) { _, _ in
+                                    lastCompletedItemPosition = CGPoint(
+                                        x: itemGeo.frame(in: .global).midX,
+                                        y: itemGeo.frame(in: .global).midY
+                                    )
+                                }
                         }
                     }
                 },
@@ -694,6 +822,81 @@ struct NudgesView: View {
         
         // Phase 7: Trigger celebration particles
         showCompletionParticles = true
+        
+        // ── Phase 1: Record fish reward ──
+        let allActive = horizonGroups.allActive
+        let isAllClear = allActive.count <= 1 // This was the last one
+        let earned = RewardService.shared.recordCompletion(
+            context: modelContext,
+            item: item,
+            isAllClear: isAllClear
+        )
+        let species = FishEconomy.speciesForTask(item)
+        lastEarnedSpecies = species
+        lastSnowflakesEarned = earned
+        
+        // ── Phase 4: Post fish burst notification (fires immediately at item position) ──
+        NotificationCenter.default.post(
+            name: .nudgeFishBurst,
+            object: nil,
+            userInfo: [
+                "origin": lastCompletedItemPosition,
+                "hudPosition": fishHUDPosition,
+                "fishCount": min(species.snowflakeValue, 5)
+            ]
+        )
+        
+        // ── Phase 12: Tab bar Nudgy chomp (Option A — fires with burst) ──
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            NotificationCenter.default.post(
+                name: .nudgeTabChomp,
+                object: nil,
+                userInfo: ["species": species.label]
+            )
+        }
+        
+        // ── Phase 14: Pending fish for penguin tab (Option C) ──
+        NotificationCenter.default.post(
+            name: .nudgePendingFish,
+            object: nil,
+            userInfo: ["count": 1]
+        )
+        
+        // ── Phase 9: Species toast (after burst settles ~1.5s) ──
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                showSpeciesToast = true
+            }
+        }
+        
+        // ── Phase 13: Nudgy peek-munch (after toast shows ~3s) ──
+        let toastDuration = species.celebrationDuration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5 + toastDuration + 0.3) {
+            showNudgyPeek = true
+        }
+        
+        // ── Phase 16: Task transition overlay (optional — only if next task exists) ──
+        completedTaskContent = item.content
+        completedTaskEmoji = item.emoji ?? "checklist"
+        let remainingActive = allActive.filter { $0.id != item.id }
+        nextTaskContent = remainingActive.first?.content
+        nextTaskEmoji = remainingActive.first?.emoji
+        if nextTaskContent != nil {
+            let transitionDelay = 1.5 + toastDuration + 0.3 + 2.3  // after peek-munch finishes
+            DispatchQueue.main.asyncAfter(deadline: .now() + transitionDelay) {
+                withAnimation(AnimationConstants.springSmooth) {
+                    showTransitionOverlay = true
+                }
+            }
+        }
+        
+        // ── Phase 11: All-clear celebration ──
+        if isAllClear {
+            isAllClearCelebration = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                HapticService.shared.swipeDone()
+            }
+        }
         
         // Clean up any cached state for this item
         expandedItemID = nil

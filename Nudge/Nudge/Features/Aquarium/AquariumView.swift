@@ -2,9 +2,9 @@
 //  AquariumView.swift
 //  Nudge
 //
-//  Visual fish tank showing your weekly catch collection.
-//  Fish swim around, different species visible.
-//  Weekly reset with "best week" tracking.
+//  Full-page aquarium view showing your weekly catch collection.
+//  Vector fish swim with tail wag animation driven by TimelineView.
+//  Weekly progress, species collection, and recent catches.
 //
 
 import SwiftUI
@@ -17,7 +17,6 @@ struct AquariumView: View {
     let level: Int
     let streak: Int
     
-    @State private var animationPhase: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     private var weeklyCatches: [FishCatch] {
@@ -39,7 +38,7 @@ struct AquariumView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: DesignTokens.spacingLG) {
-                // Aquarium Tank
+                // Full-size aquarium tank
                 aquariumTank
                 
                 // Weekly Progress
@@ -56,85 +55,17 @@ struct AquariumView: View {
         }
         .navigationTitle(String(localized: "Aquarium"))
         .background(Color.black.ignoresSafeArea())
-        .onAppear {
-            if !reduceMotion {
-                withAnimation(.linear(duration: 20).repeatForever(autoreverses: false)) {
-                    animationPhase = 1
-                }
-            }
-        }
     }
     
-    // MARK: - Aquarium Tank
+    // MARK: - Aquarium Tank (Full Size)
     
     private var aquariumTank: some View {
-        ZStack {
-            // Water background
-            RoundedRectangle(cornerRadius: 20)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(hex: "#001B3A"),
-                            Color(hex: "#002855"),
-                            Color(hex: "#001B3A")
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(height: 260)
-            
-            // Bubbles
-            ForEach(0..<8, id: \.self) { i in
-                Circle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(width: CGFloat.random(in: 4...12))
-                    .offset(
-                        x: CGFloat.random(in: -140...140),
-                        y: reduceMotion ? CGFloat.random(in: -100...100) : CGFloat(sin(animationPhase * .pi * 2 + Double(i) * 0.8)) * 100
-                    )
-            }
-            
-            // Swimming fish
-            ForEach(Array(weeklyCatches.prefix(15).enumerated()), id: \.element.id) { index, fish in
-                fishView(for: fish, index: index)
-            }
-            
-            // Empty state
-            if weeklyCatches.isEmpty {
-                VStack(spacing: DesignTokens.spacingSM) {
-                    Text("🐧")
-                        .font(.system(size: 40))
-                    Text(String(localized: "Complete tasks to fill your aquarium!"))
-                        .font(AppTheme.caption)
-                        .foregroundStyle(DesignTokens.textSecondary)
-                }
-            }
-            
-            // Glass border
-            RoundedRectangle(cornerRadius: 20)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.15), Color.white.opacity(0.05)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-                .frame(height: 260)
-        }
-    }
-    
-    private func fishView(for fish: FishCatch, index: Int) -> some View {
-        Text(fish.species.emoji)
-            .font(.system(size: fish.species == .swordfish ? 28 : fish.species == .whale ? 36 : 22))
-            .offset(
-                x: reduceMotion
-                    ? CGFloat(index * 20 - 120)
-                    : CGFloat(sin(animationPhase * .pi * 2 + Double(index) * 0.5)) * 130,
-                y: CGFloat(cos(animationPhase * .pi * 2 * 0.7 + Double(index) * 0.3)) * 80
-            )
-            .scaleEffect(x: sin(animationPhase * .pi * 2 + Double(index)) > 0 ? 1 : -1, y: 1)
+        AquariumTankView(
+            catches: catches,
+            level: level,
+            streak: streak,
+            height: 300
+        )
     }
     
     // MARK: - Weekly Progress
@@ -198,9 +129,14 @@ struct AquariumView: View {
     private func speciesCard(_ species: FishSpecies) -> some View {
         let count = speciesCounts[species] ?? 0
         return VStack(spacing: DesignTokens.spacingXS) {
-            Text(species.emoji)
-                .font(.system(size: 32))
-                .opacity(count > 0 ? 1 : 0.3)
+            // Vector fish instead of emoji
+            FishView(
+                size: 28,
+                color: species.fishColor,
+                accentColor: species.fishAccentColor
+            )
+            .opacity(count > 0 ? 1 : 0.3)
+
             Text("\(count)")
                 .font(AppTheme.captionBold)
                 .foregroundStyle(count > 0 ? DesignTokens.textPrimary : DesignTokens.textTertiary)
@@ -236,8 +172,12 @@ struct AquariumView: View {
             } else {
                 ForEach(recentFishList) { fish in
                     HStack(spacing: DesignTokens.spacingSM) {
-                        Text(fish.species.emoji)
-                            .font(.system(size: 24))
+                        FishView(
+                            size: 22,
+                            color: fish.species.fishColor,
+                            accentColor: fish.species.fishAccentColor
+                        )
+                        .frame(width: 28)
                         
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(fish.taskEmoji) \(fish.taskContent)")

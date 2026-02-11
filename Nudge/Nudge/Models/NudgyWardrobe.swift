@@ -58,6 +58,15 @@ final class NudgyWardrobe {
     /// e.g. "igloo,campfire"
     var unlockedPropsRaw: String
     
+    // MARK: Tank Decorations
+    
+    /// Comma-separated IDs of unlocked tank decorations.
+    /// e.g. "deco-coral,deco-shell"
+    var unlockedDecorationsRaw: String
+    
+    /// Comma-separated IDs of currently placed (visible) tank decorations.
+    var placedDecorationsRaw: String
+    
     // MARK: Stats
     
     /// Total tasks completed all-time.
@@ -79,6 +88,20 @@ final class NudgyWardrobe {
     
     /// Last date a weekly freeze was earned
     var lastFreezeEarnedDate: Date?
+    
+    // MARK: Feeding
+    
+    /// Number of times fish were fed today.
+    var fishFedToday: Int
+    
+    /// Last date fish were fed (for daily reset).
+    var lastFedDateRaw: Date?
+    
+    /// Consecutive days the user has fed fish (feeding streak).
+    var feedingStreak: Int
+    
+    /// Longest feeding streak ever.
+    var longestFeedingStreak: Int
     
     // MARK: Milestones
     
@@ -131,12 +154,18 @@ final class NudgyWardrobe {
         self.unlockedAccessoriesRaw = ""
         self.equippedAccessoriesRaw = ""
         self.unlockedPropsRaw = ""
+        self.unlockedDecorationsRaw = ""
+        self.placedDecorationsRaw = ""
         self.totalTasksCompleted = 0
         self.tasksCompletedToday = 0
         self.lastDailyResetRaw = nil
         self.streakFreezes = 0
         self.freezeUsedToday = false
         self.lastFreezeEarnedDate = nil
+        self.fishFedToday = 0
+        self.lastFedDateRaw = nil
+        self.feedingStreak = 0
+        self.longestFeedingStreak = 0
         self.celebratedMilestonesRaw = ""
         self.fishCatchesJSON = ""
     }
@@ -173,6 +202,28 @@ final class NudgyWardrobe {
         }
         set {
             unlockedPropsRaw = newValue.sorted().joined(separator: ",")
+        }
+    }
+    
+    /// Set of unlocked tank decoration IDs.
+    var unlockedDecorations: Set<String> {
+        get {
+            Set(unlockedDecorationsRaw.split(separator: ",").map(String.init))
+                .filter { !$0.isEmpty }
+        }
+        set {
+            unlockedDecorationsRaw = newValue.sorted().joined(separator: ",")
+        }
+    }
+    
+    /// Set of currently placed (visible) tank decoration IDs.
+    var placedDecorations: Set<String> {
+        get {
+            Set(placedDecorationsRaw.split(separator: ",").map(String.init))
+                .filter { !$0.isEmpty }
+        }
+        set {
+            placedDecorationsRaw = newValue.sorted().joined(separator: ",")
         }
     }
     

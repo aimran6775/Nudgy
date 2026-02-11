@@ -56,6 +56,10 @@ struct NudgyHomeView: View {
     /// Fish sparkle effect on the HUD
     @State private var showFishSparkle = false
     
+    // Option C: Fish pile munch when returning to penguin tab
+    @State private var showFishPileMunch = false
+    @State private var fishPileSpecies: FishSpecies? = nil
+    
     /// Idle actions engine
     private let idleActions = NudgyIdleActions.shared
     
@@ -126,6 +130,11 @@ struct NudgyHomeView: View {
             // Celebratory fish burst overlay (task completion)
             CompletionFishBurst()
             
+            // Option C: Fish pile munch overlay (when returning with pending fish)
+            NudgyPeekMunch(isActive: $showFishPileMunch, species: fishPileSpecies)
+                .allowsHitTesting(false)
+                .zIndex(50)
+            
             // Stage-up celebration overlay
             if showStageUpCelebration {
                 StageUpCelebration(newStage: stageUpTier) {
@@ -161,6 +170,9 @@ struct NudgyHomeView: View {
             updateMoodReactor()
             // Start idle action engine
             idleActions.start(penguinState: penguinState)
+            
+            // Option C: Check for pending fish to munch
+            checkPendingFishPile()
         }
         .onDisappear {
             idleActions.stop()
@@ -1445,6 +1457,44 @@ struct NudgyHomeView: View {
         }
     }
 
+    // MARK: - Option C: Fish Pile Munch
+    
+    /// When the user navigates to the penguin tab with pending fish, Nudgy munches them.
+    private func checkPendingFishPile() {
+        guard penguinState.pendingFishToMunch > 0 else { return }
+        
+        // Determine the species to show (use last catch or default to catfish)
+        fishPileSpecies = RewardService.shared.lastFishCatch?.species ?? .catfish
+        
+        // Delay slightly so the view is settled before animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            // Trigger the munch
+            showFishPileMunch = true
+            
+            // Nudgy reacts happily
+            penguinState.expression = .celebrating
+            
+            // Show dialogue about the fish
+            let count = penguinState.pendingFishToMunch
+            let message: String
+            if count == 1 {
+                message = String(localized: "Yum! 🐟 Thanks for the fish!")
+            } else {
+                message = String(localized: "Yum! 🐟×\(count) That's a feast!")
+            }
+            penguinState.say(message)
+            
+            // Clear the pile
+            penguinState.pendingFishToMunch = 0
+            
+            // Return to ambient after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                if penguinState.interactionMode == .ambient {
+                    penguinState.expression = .happy
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Preview

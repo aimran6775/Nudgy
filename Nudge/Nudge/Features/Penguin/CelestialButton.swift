@@ -441,7 +441,7 @@ struct CelestialExpandedOverlay: View {
             VStack(spacing: 0) {
                 headerBar
                     .padding(.horizontal, DesignTokens.spacingLG)
-                    .padding(.top, DesignTokens.spacingSM)
+                    .padding(.top, DesignTokens.spacingMD + 4)
                     .opacity(appeared ? 1 : 0)
                     .offset(y: appeared ? 0 : -10)
 
@@ -450,6 +450,7 @@ struct CelestialExpandedOverlay: View {
                         heroSection
                             .opacity(heroAppeared ? 1 : 0)
                             .scaleEffect(heroAppeared ? 1 : 0.9)
+                            .onTapGesture { dismiss() }
 
                         statsStrip
                             .opacity(statsAppeared ? 1 : 0)
@@ -469,14 +470,17 @@ struct CelestialExpandedOverlay: View {
                             .opacity(cardsAppeared ? 1 : 0)
                             .offset(y: cardsAppeared ? 0 : 16)
 
-                        Spacer(minLength: 60)
+                        // Tap-to-dismiss zone below content
+                        Color.clear
+                            .frame(height: 200)
+                            .contentShape(Rectangle())
+                            .onTapGesture { dismiss() }
                     }
                     .padding(.horizontal, DesignTokens.spacingLG)
                     .padding(.top, DesignTokens.spacingMD)
                 }
             }
             .safeAreaPadding(.top, DesignTokens.spacingSM)
-            .contentShape(Rectangle())
         }
         .ignoresSafeArea()
         .gesture(
@@ -644,16 +648,21 @@ struct CelestialExpandedOverlay: View {
 
             Spacer()
 
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(Color.white.opacity(0.1)))
-                    .overlay(Circle().stroke(Color.white.opacity(0.08), lineWidth: 0.5))
-            }
-            .buttonStyle(.plain)
-            .contentShape(Circle())
+            // Close button — glass circle, tap handled by onTapGesture
+            // (.interactive() on glassEffect swallows Button taps, so we
+            // keep it for the visual and use onTapGesture instead)
+            Image(systemName: "xmark")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.85))
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(.ultraThinMaterial))
+                .glassEffect(.regular.interactive(), in: .circle)
+                .onTapGesture { dismiss() }
+                .nudgeAccessibility(
+                    label: String(localized: "Close"),
+                    hint: String(localized: "Tap to dismiss inventory"),
+                    traits: .isButton
+                )
         }
     }
 

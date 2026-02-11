@@ -204,6 +204,11 @@ final class PenguinState {
     /// Timestamp of last interaction
     var lastInteractionDate: Date = .now
     
+    // MARK: - Fish Pile (Option C)
+    
+    /// Number of fish pending to be "munched" when user visits the penguin tab
+    var pendingFishToMunch: Int = 0
+    
     // MARK: - Idle Chatter
     
     /// Timer for periodic idle chatter

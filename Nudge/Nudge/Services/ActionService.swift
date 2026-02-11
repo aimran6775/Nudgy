@@ -211,6 +211,12 @@ extension Notification.Name {
     
     /// Posted when a follow-up nudge should be created after an action
     static let nudgeCreateFollowUp = Notification.Name("nudgeCreateFollowUp")
+    
+    /// Posted when the tab bar Nudgy should play a chomp animation (Option A)
+    static let nudgeTabChomp = Notification.Name("nudgeTabChomp")
+    
+    /// Posted when fish are pending for the penguin tab to "munch" (Option C)
+    static let nudgePendingFish = Notification.Name("nudgePendingFish")
 }
 
 // MARK: - Message Compose View (UIViewControllerRepresentable)
