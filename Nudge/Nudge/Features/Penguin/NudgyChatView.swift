@@ -162,7 +162,7 @@ struct NudgyChatView: View {
     private var chatHeader: some View {
         HStack {
             // Mini penguin avatar
-            LottieNudgyView(
+            NudgySprite(
                 expression: penguinState.isChatGenerating ? .thinking : penguinState.expression,
                 size: 36,
                 accentColor: DesignTokens.accentActive
@@ -269,7 +269,7 @@ struct NudgyChatView: View {
     
     private var chatWelcome: some View {
         VStack(spacing: DesignTokens.spacingLG) {
-            LottieNudgyView(
+            NudgySprite(
                 expression: .waving,
                 size: DesignTokens.penguinSizeMedium,
                 accentColor: DesignTokens.accentActive

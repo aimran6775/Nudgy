@@ -205,7 +205,9 @@ final class NudgeRepository {
         emoji: String?,
         actionType: ActionType?,
         actionTarget: String? = nil,
-        contactName: String?
+        contactName: String?,
+        priority: TaskPriority? = nil,
+        dueDate: Date? = nil
     ) -> NudgeItem {
         let maxOrder = fetchMaxSortOrder()
         let item = NudgeItem(
@@ -215,7 +217,9 @@ final class NudgeRepository {
             actionType: actionType,
             actionTarget: actionTarget,
             contactName: contactName,
-            sortOrder: maxOrder + 1
+            sortOrder: maxOrder + 1,
+            priority: priority,
+            dueDate: dueDate
         )
         modelContext.insert(item)
         save()

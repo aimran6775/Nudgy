@@ -19,12 +19,24 @@ enum NudgeTab: Int, Hashable {
     case you        = 2
 }
 
+// MARK: - Selected Tab Environment
+
+private struct SelectedTabKey: EnvironmentKey {
+    static let defaultValue: NudgeTab = .nudgy
+}
+
+extension EnvironmentValues {
+    var selectedTab: NudgeTab {
+        get { self[SelectedTabKey.self] }
+        set { self[SelectedTabKey.self] = newValue }
+    }
+}
+
 // MARK: - Root View
 
 struct ContentView: View {
     @State private var selectedTab: NudgeTab = .nudgy
     @State private var showBrainDump = false
-    @State private var showQuickAdd = false
     @State private var activeItemCount: Int = 0
     @State private var hasOverdueTasks: Bool = false
     @State private var allClear: Bool = false
@@ -75,7 +87,7 @@ struct ContentView: View {
                 }
 
                 Tab(String(localized: "Nudges"), systemImage: nudgesTabIcon, value: NudgeTab.nudges) {
-                    NudgesView()
+                    NudgesPageView()
                 }
                 .badge(smartBadge)
 
@@ -83,6 +95,17 @@ struct ContentView: View {
                     YouView()
                 }
             }
+            
+            // Capture bar — available on Nudgy + Nudges tabs.
+            // ADHD principle: capture the thought before it evaporates.
+            if selectedTab != .you {
+                NudgyCaptureBar {
+                    refreshActiveCount()
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(100)
+            }
+            
             // Option A: Tab bar Nudgy chomp overlay
             if showTabChomp {
                 GeometryReader { geo in
@@ -96,27 +119,23 @@ struct ContentView: View {
                 .zIndex(999)
             }
         } // end ZStack
+        .environment(\.selectedTab, selectedTab)
         .preferredColorScheme(.dark)
         .fullScreenCover(isPresented: $showBrainDump) {
             BrainDumpView(isPresented: $showBrainDump)
         }
-        .sheet(isPresented: $showQuickAdd) {
-            QuickAddSheet()
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(.ultraThinMaterial)
-        }
         .onReceive(NotificationCenter.default.publisher(for: .nudgeOpenBrainDump)) { _ in
             showBrainDump = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: .nudgeOpenQuickAdd)) { _ in
-            showQuickAdd = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .nudgeOpenChat)) { _ in
-            selectedTab = .nudgy
-        }
+        // .nudgeOpenQuickAdd and .nudgeOpenChat are now handled
+        // by NudgyCaptureBar directly — no need to route here.
         .onReceive(NotificationCenter.default.publisher(for: .nudgeDataChanged)) { _ in
             refreshActiveCount()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .nudgeSwitchToNudges)) { _ in
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                selectedTab = .nudges
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .nudgeNotificationAction)) { notification in
             handleNotificationAction(notification)
@@ -146,7 +165,14 @@ struct ContentView: View {
             setupRepository()
             refreshActiveCount()
         }
-        .onChange(of: selectedTab) { _, _ in refreshActiveCount() }
+        .onChange(of: selectedTab) { oldTab, newTab in
+            // Tactile feedback on tab switch — ice tap sound + soft haptic
+            if oldTab != newTab {
+                SoundService.shared.playTabSwitch()
+                HapticService.shared.prepare()
+            }
+            refreshActiveCount()
+        }
         .onOpenURL { url in
             handleDeepLink(url)
         }
@@ -307,7 +333,8 @@ struct ContentView: View {
         case "brainDump":
             showBrainDump = true
         case "quickAdd":
-            showQuickAdd = true
+            // Route through capture bar via notification
+            NotificationCenter.default.post(name: .nudgeOpenQuickAdd, object: nil)
         case "viewTask", "nudges":
             selectedTab = .nudges
         case "allItems", "inbox":

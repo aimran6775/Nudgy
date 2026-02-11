@@ -7,7 +7,7 @@
 //  RewardService. Fish scatter on tap and swim back slowly.
 //
 //  Uses AnimatedFishView from IntroVectorShapes for the bezier-drawn
-//  fish art with smooth tail wag. TimelineView drives 60fps updates.
+//  fish art with smooth tail wag. TimelineView drives 20fps updates.
 //
 
 import SwiftUI
@@ -61,7 +61,7 @@ struct AmbientFishScene: View {
     }
 
     var body: some View {
-        SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
+        SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 12.0, paused: reduceMotion)) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
 
             ZStack {
@@ -70,6 +70,7 @@ struct AmbientFishScene: View {
                 }
             }
         }
+        .drawingGroup()  // Flatten fish layers into single GPU texture
         .allowsHitTesting(true)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -231,16 +232,16 @@ struct AmbientFishScene: View {
         }
 
         // Swim back slowly
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
             for i in fish.indices {
                 fish[i].isScattering = false
                 withAnimation(.easeInOut(duration: 2.0)) {
                     fish[i].scatterOffset = .zero
                 }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                isScattered = false
-            }
+            try? await Task.sleep(for: .seconds(2.0))
+            isScattered = false
         }
     }
 }

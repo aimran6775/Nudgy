@@ -22,6 +22,7 @@ struct SpeciesToast: View {
     
     @State private var sparkleRotation: Double = 0
     @State private var glowPulse: Bool = false
+    @State private var dismissTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     private var isVeryRare: Bool {
@@ -40,8 +41,8 @@ struct SpeciesToast: View {
             if isRare {
                 HapticService.shared.swipeDone()
                 if isVeryRare {
-                    // Double haptic for whale
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(0.15))
                         HapticService.shared.swipeDone()
                     }
                 }
@@ -57,13 +58,18 @@ struct SpeciesToast: View {
                 }
             }
             
-            // Auto-dismiss
+            // Auto-dismiss (cancellable)
             let duration = species.celebrationDuration
-            DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+            dismissTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(duration))
+                guard !Task.isCancelled else { return }
                 withAnimation(.easeOut(duration: 0.3)) {
                     isPresented = false
                 }
             }
+        }
+        .onDisappear {
+            dismissTask?.cancel()
         }
     }
     

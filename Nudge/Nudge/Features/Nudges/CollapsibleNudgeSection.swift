@@ -71,6 +71,7 @@ struct CollapsibleNudgeSection<Content: View>: View {
             // Count badge
             Text("\(count)")
                 .font(.system(size: 11, weight: .bold))
+                .contentTransition(.numericText())
                 .foregroundStyle(accentColor)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)

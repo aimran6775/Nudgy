@@ -294,17 +294,17 @@ struct NudgeApp: App {
         repository.ingestFromShareExtension()
         repository.resurfaceExpiredSnoozes()
         
-        // DEBUG: Auto-seed comprehensive test data when store is empty
-        #if DEBUG
-        do {
-            let existing = repository.fetchActiveQueue()
-            let snoozed = repository.fetchSnoozed()
-            let done = repository.fetchCompletedToday()
-            if existing.isEmpty && snoozed.isEmpty && done.isEmpty {
-                seedComprehensiveTestData(context: container.mainContext)
-            }
-        }
-        #endif
+        // DEBUG: Auto-seed disabled — use -seedTasks flag only when explicitly needed
+        // #if DEBUG
+        // do {
+        //     let existing = repository.fetchActiveQueue()
+        //     let snoozed = repository.fetchSnoozed()
+        //     let done = repository.fetchCompletedToday()
+        //     if existing.isEmpty && snoozed.isEmpty && done.isEmpty {
+        //         seedComprehensiveTestData(context: container.mainContext)
+        //     }
+        // }
+        // #endif
 
         // Initial sync (if engine exists)
         await syncEngine?.syncAll()

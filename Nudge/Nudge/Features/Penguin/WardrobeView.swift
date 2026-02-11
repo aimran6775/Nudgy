@@ -157,7 +157,7 @@ struct WardrobeView: View {
     
     private var nudgyCharacterView: some View {
         let expression: PenguinExpression = showCelebration ? .celebrating : .idle
-        return LottieNudgyView(
+        return NudgySprite(
             expression: expression,
             size: 160,
             accentColor: DesignTokens.accentActive

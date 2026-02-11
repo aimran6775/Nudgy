@@ -97,13 +97,7 @@ struct PickedTaskCard: View {
     @State private var glowPhase: CGFloat = 0
     
     var body: some View {
-        ZStack {
-            // Dimmed background
-            Color.black.opacity(0.6)
-                .ignoresSafeArea()
-                .onTapGesture { onDismiss() }
-            
-            // Focus card
+            // Focus card (dimmed background handled by parent for hero morph)
             VStack(spacing: DesignTokens.spacingXL) {
                 // Nudgy says
                 HStack(spacing: DesignTokens.spacingSM) {
@@ -246,9 +240,6 @@ struct PickedTaskCard: View {
             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24))
             .shadow(color: Color(hex: "5E5CE6").opacity(0.15), radius: 24, y: 8)
             .padding(.horizontal, DesignTokens.spacingXL)
-            .scaleEffect(appeared ? 1.0 : 0.85)
-            .opacity(appeared ? 1 : 0)
-        }
         .onAppear {
             withAnimation(reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.75)) {
                 appeared = true

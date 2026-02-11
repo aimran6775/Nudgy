@@ -59,10 +59,11 @@ struct SnoozePickerView: View {
                         Spacer()
                     }
                     .padding(DesignTokens.spacingMD)
-                    .background(
+                    .background {
                         RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusChip)
-                            .fill(Color.white.opacity(0.05))
-                    )
+                            .fill(Color.white.opacity(0.03))
+                    }
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusChip))
                     
                     // Quick presets
                     VStack(spacing: DesignTokens.spacingSM) {
@@ -88,6 +89,7 @@ struct SnoozePickerView: View {
                         
                         Button {
                             HapticService.shared.snoozeTimeSelected()
+                            SoundService.shared.playSnooze()
                             onSnooze(customDate)
                         } label: {
                             HStack {
@@ -121,10 +123,11 @@ struct SnoozePickerView: View {
                             }
                             .font(AppTheme.body)
                             .padding(DesignTokens.spacingMD)
-                            .background(
+                            .background {
                                 RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                                    .fill(Color.white.opacity(0.05))
-                            )
+                                    .fill(Color.white.opacity(0.03))
+                            }
+                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
                         }
                         .buttonStyle(.plain)
                     }
@@ -149,6 +152,7 @@ struct SnoozePickerView: View {
     private func presetButton(_ preset: (label: String, icon: String, date: Date)) -> some View {
         Button {
             HapticService.shared.snoozeTimeSelected()
+            SoundService.shared.playSnooze()
             onSnooze(preset.date)
         } label: {
             HStack(spacing: DesignTokens.spacingMD) {
@@ -170,10 +174,11 @@ struct SnoozePickerView: View {
                 Spacer()
             }
             .padding(DesignTokens.spacingMD)
-            .background(
+            .background {
                 RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                    .fill(Color.white.opacity(0.05))
-            )
+                    .fill(Color.white.opacity(0.03))
+            }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
         .buttonStyle(.plain)
         .nudgeAccessibility(

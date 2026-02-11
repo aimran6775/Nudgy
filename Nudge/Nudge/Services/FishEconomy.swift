@@ -128,7 +128,7 @@ enum FishSpecies: String, CaseIterable, Codable, Sendable {
 // MARK: - Fish Catch (a single earned fish)
 
 /// Record of a single fish caught (earned by completing a task).
-struct FishCatch: Codable, Identifiable, Sendable {
+struct FishCatch: Codable, Identifiable, Equatable, Sendable {
     let id: UUID
     let species: FishSpecies
     let taskContent: String

@@ -86,20 +86,23 @@ struct SpeechBubbleView: View {
     
     private var speechBubble: some View {
         Text(displayedText)
-            .font(AppTheme.body)
+            .font(AppTheme.nudgyBubbleFont)
             .foregroundStyle(DesignTokens.textPrimary)
             .multilineTextAlignment(.center)
             .padding(.horizontal, DesignTokens.spacingLG)
             .padding(.vertical, DesignTokens.spacingMD)
             .frame(maxWidth: maxWidth)
-            .background(
+            .background {
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(DesignTokens.cardSurface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .strokeBorder(DesignTokens.cardBorder, lineWidth: 0.5)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.06), .clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
                     )
-            )
+            }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
     }
     
     // MARK: - Thought Style (softer, with dot trail)
@@ -107,20 +110,17 @@ struct SpeechBubbleView: View {
     private var thoughtBubble: some View {
         VStack(spacing: 0) {
             Text(displayedText)
-                .font(AppTheme.body.italic())
+                .font(AppTheme.nudgyBubbleFont.italic())
                 .foregroundStyle(DesignTokens.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, DesignTokens.spacingLG)
                 .padding(.vertical, DesignTokens.spacingMD)
                 .frame(maxWidth: maxWidth)
-                .background(
+                .background {
                     RoundedRectangle(cornerRadius: 20)
-                        .fill(DesignTokens.cardSurface.opacity(0.6))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 20)
-                                .strokeBorder(DesignTokens.cardBorder.opacity(0.4), lineWidth: 0.5)
-                        )
-                )
+                        .fill(Color.white.opacity(0.03))
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: 20))
         }
     }
     
@@ -134,15 +134,18 @@ struct SpeechBubbleView: View {
             .padding(.horizontal, DesignTokens.spacingXL)
             .padding(.vertical, DesignTokens.spacingLG)
             .frame(maxWidth: maxWidth + 40)
-            .background(
+            .background {
                 RoundedRectangle(cornerRadius: 20)
-                    .fill(DesignTokens.cardSurface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .strokeBorder(DesignTokens.accentActive.opacity(0.3), lineWidth: 1)
+                    .fill(
+                        LinearGradient(
+                            colors: [DesignTokens.accentActive.opacity(0.08), .clear],
+                            startPoint: .top,
+                            endPoint: .center
+                        )
                     )
-                    .shadow(color: DesignTokens.accentActive.opacity(0.15), radius: 16, y: 4)
-            )
+            }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+            .shadow(color: DesignTokens.accentActive.opacity(0.12), radius: 16, y: 4)
     }
     
     // MARK: - Whisper Style (small, muted)
@@ -155,10 +158,7 @@ struct SpeechBubbleView: View {
             .padding(.horizontal, DesignTokens.spacingMD)
             .padding(.vertical, DesignTokens.spacingSM)
             .frame(maxWidth: maxWidth - 40)
-            .background(
-                Capsule()
-                    .fill(DesignTokens.cardSurface.opacity(0.5))
-            )
+            .glassEffect(.regular, in: .capsule)
     }
     
     // MARK: - Tail
@@ -167,9 +167,9 @@ struct SpeechBubbleView: View {
         Group {
             switch dialogue.style {
             case .speech, .announcement:
-                // Triangular tail pointing down
+                // Triangular tail pointing down — subtle to let glass speak
                 Triangle()
-                    .fill(DesignTokens.cardSurface)
+                    .fill(.ultraThinMaterial)
                     .frame(width: 16, height: 8)
                     .rotationEffect(.degrees(180))
                     .offset(x: -10)
@@ -177,11 +177,12 @@ struct SpeechBubbleView: View {
                 // Thought dots trailing down
                 VStack(spacing: 3) {
                     Circle()
-                        .fill(DesignTokens.cardSurface.opacity(0.5))
+                        .fill(.ultraThinMaterial)
                         .frame(width: 8, height: 8)
                     Circle()
-                        .fill(DesignTokens.cardSurface.opacity(0.35))
+                        .fill(.ultraThinMaterial)
                         .frame(width: 5, height: 5)
+                        .opacity(0.6)
                 }
                 .offset(x: -15)
             case .whisper:

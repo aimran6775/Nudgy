@@ -179,6 +179,9 @@ final class PenguinState {
     /// Rolling waveform samples for visual feedback
     var waveformSamples: [Float] = Array(repeating: 0, count: 20)
     
+    /// Throttle: last time audio state was published to observers
+    private var lastAudioPublish: Date = .distantPast
+    
     // MARK: - Task Context (what the penguin is presenting)
     
     /// The task currently being shown to the user (if any)
@@ -555,7 +558,13 @@ final class PenguinState {
     // MARK: - Audio Feed
     
     /// Feed audio level from SpeechService (called during recording).
+    /// Throttled to ~15Hz to prevent view invalidation storms.
     func updateAudioLevel(_ level: Float, samples: [Float]) {
+        let now = Date()
+        // Only publish at ~15fps (every 66ms) to avoid invalidation storms
+        guard now.timeIntervalSince(lastAudioPublish) >= 0.066 else { return }
+        lastAudioPublish = now
+        
         self.audioLevel = level
         self.waveformSamples = samples
         

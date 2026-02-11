@@ -32,6 +32,8 @@ enum PenguinExpression: String, CaseIterable {
     case nudging      // Tapping watch, pointing at a task
     case confused     // Voice input unclear / error state
     case typing       // Quick-add mode — pecking motion
+    case shy          // Overwhelmed or complimented — extra blush, looking down
+    case mischievous  // Playful mood — asymmetric smirk, one eyebrow raised
 }
 
 // MARK: - Color Constants (matches icon generator palette)
@@ -51,6 +53,7 @@ struct PenguinMascot: View {
     let expression: PenguinExpression
     let size: CGFloat
     var accentColor: Color = DesignTokens.accentActive
+    var showBeanie: Bool = true
     
     @State private var blinkPhase = false
     @State private var swayOffset: CGFloat = 0
@@ -62,6 +65,11 @@ struct PenguinMascot: View {
     @State private var zzzOffset: [CGFloat] = [0, 0, 0]
     @State private var flipperSway: CGFloat = 0
     @State private var microRotation: Double = 0
+    
+    // Cancellable animation tasks (prevents leaked recursive asyncAfter chains)
+    @State private var blinkTask: Task<Void, Never>?
+    @State private var dotCycleTask: Task<Void, Never>?
+    @State private var talkingBobTask: Task<Void, Never>?
     
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
@@ -105,16 +113,17 @@ struct PenguinMascot: View {
                         ],
                         center: .center,
                         startRadius: 0,
-                        endRadius: p * 0.17
+                        endRadius: p * 0.15
                     )
                 )
-                .frame(width: p * 0.36, height: p * 0.07)
+                .frame(width: p * 0.32, height: p * 0.065)
                 .offset(y: p * 0.005)
             
             penguinWings
             penguinScarf
             penguinHead
             penguinFacePatch
+            if showBeanie { penguinBeanie }
             penguinCheekBlush
             penguinEyes
             penguinEyebrows
@@ -122,10 +131,16 @@ struct PenguinMascot: View {
             penguinAccessories
         }
         .frame(width: size, height: size * 1.15)
+        .drawingGroup()  // Flatten 15+ gradient layers into a single GPU texture
         .scaleEffect(breatheScale)
         .rotationEffect(.degrees(reduceMotion ? 0 : microRotation))
         .offset(x: reduceMotion ? 0 : swayOffset, y: bounceOffset)
         .onAppear { startAnimations() }
+        .onDisappear {
+            blinkTask?.cancel()
+            dotCycleTask?.cancel()
+            talkingBobTask?.cancel()
+        }
         .nudgeAccessibility(
             label: penguinAccessibilityLabel,
             traits: .isImage
@@ -140,9 +155,9 @@ struct PenguinMascot: View {
     // │  Offsets are relative to frame center (0,0).              │
     // └────────────────────────────────────────────────────────────┘
     
-    // MARK: - Body (plump snowball shape — chubby bezier)
-    //  Chubby: body_w = 0.88p, body_h = 0.98p, offset +7%
-    //  Wider than original pear to create huggable plushy silhouette.
+    // MARK: - Body (slightly slimmed snowball — 10% less round)
+    //  Slimmed: body_w = 0.79p, body_h = 0.94p, offset +7%
+    //  Still huggable, but a touch more character definition.
     
     private var penguinBody: some View {
         ZStack {
@@ -171,12 +186,11 @@ struct PenguinMascot: View {
                         ],
                         center: .init(x: 0.38, y: 0.32),
                         startRadius: 0,
-                        endRadius: p * 0.48
+                        endRadius: p * 0.43
                     )
                 )
             
             // Pixar rim light — subtle edge highlight on the left side
-            // Separates character from dark backgrounds (like Sully's rim)
             PenguinBodyShape()
                 .stroke(
                     LinearGradient(
@@ -193,33 +207,31 @@ struct PenguinMascot: View {
                 )
             
             // Feather texture hint — barely visible curved lines
-            // suggesting plumage direction (Pixar surface detail)
             Path { path in
                 // Left shoulder feather arc
-                path.move(to: CGPoint(x: p * 0.88 * 0.16, y: p * 0.98 * 0.32))
+                path.move(to: CGPoint(x: p * 0.79 * 0.16, y: p * 0.94 * 0.32))
                 path.addCurve(
-                    to: CGPoint(x: p * 0.88 * 0.22, y: p * 0.98 * 0.52),
-                    control1: CGPoint(x: p * 0.88 * 0.10, y: p * 0.98 * 0.39),
-                    control2: CGPoint(x: p * 0.88 * 0.16, y: p * 0.98 * 0.47)
+                    to: CGPoint(x: p * 0.79 * 0.22, y: p * 0.94 * 0.52),
+                    control1: CGPoint(x: p * 0.79 * 0.10, y: p * 0.94 * 0.39),
+                    control2: CGPoint(x: p * 0.79 * 0.16, y: p * 0.94 * 0.47)
                 )
                 // Right shoulder feather arc
-                path.move(to: CGPoint(x: p * 0.88 * 0.84, y: p * 0.98 * 0.32))
+                path.move(to: CGPoint(x: p * 0.79 * 0.84, y: p * 0.94 * 0.32))
                 path.addCurve(
-                    to: CGPoint(x: p * 0.88 * 0.78, y: p * 0.98 * 0.52),
-                    control1: CGPoint(x: p * 0.88 * 0.90, y: p * 0.98 * 0.39),
-                    control2: CGPoint(x: p * 0.88 * 0.84, y: p * 0.98 * 0.47)
+                    to: CGPoint(x: p * 0.79 * 0.78, y: p * 0.94 * 0.52),
+                    control1: CGPoint(x: p * 0.79 * 0.90, y: p * 0.94 * 0.39),
+                    control2: CGPoint(x: p * 0.79 * 0.84, y: p * 0.94 * 0.47)
                 )
             }
             .stroke(Color.white.opacity(0.04), lineWidth: p * 0.004)
         }
-        .frame(width: p * 0.88, height: p * 0.98)
+        .frame(width: p * 0.79, height: p * 0.94)
         .offset(y: p * 0.07)
-        // Subtle drop shadow to ground the penguin
         .shadow(color: Color.black.opacity(0.25), radius: p * 0.04, y: p * 0.03)
     }
     
-    // MARK: - Belly (fills 73% of body width — plushy proportions)
-    //  Chubby: belly_w = 0.64p, belly_h = 0.80p, offset +13%
+    // MARK: - Belly (proportional to slimmed body)
+    //  Slimmed: belly_w = 0.58p, belly_h = 0.76p, offset +13%
     
     private var penguinBelly: some View {
         ZStack {
@@ -233,7 +245,6 @@ struct PenguinMascot: View {
                 )
             
             // Subsurface scattering — warm pinkish glow from within
-            // (like light passing through translucent feathers — Pixar SSS)
             Ellipse()
                 .fill(
                     RadialGradient(
@@ -244,7 +255,7 @@ struct PenguinMascot: View {
                         ],
                         center: .init(x: 0.5, y: 0.45),
                         startRadius: 0,
-                        endRadius: p * 0.25
+                        endRadius: p * 0.22
                     )
                 )
             
@@ -259,11 +270,11 @@ struct PenguinMascot: View {
                         ],
                         center: .init(x: 0.35, y: 0.28),
                         startRadius: 0,
-                        endRadius: p * 0.14
+                        endRadius: p * 0.13
                     )
                 )
         }
-        .frame(width: p * 0.64, height: p * 0.80)
+        .frame(width: p * 0.58, height: p * 0.76)
         .offset(y: p * 0.13)
     }
     
@@ -362,11 +373,22 @@ struct PenguinMascot: View {
                 }
             }
             
-        case .happy, .celebrating, .talking:
+        case .happy, .talking:
             // Crescent "smile" eyes — upward arcs
             CrescentEye()
                 .fill(PenguinColors.eyeBlack)
                 .frame(width: eyeSize * 1.1, height: eyeSize * 0.45)
+            
+        case .celebrating:
+            // ★ Star eyes — pure excitement!
+            ZStack {
+                StarEye()
+                    .fill(accentColor)
+                    .frame(width: eyeSize * 1.4, height: eyeSize * 1.4)
+                StarEye()
+                    .fill(Color.white.opacity(0.4))
+                    .frame(width: eyeSize * 0.7, height: eyeSize * 0.7)
+            }
             
         case .sleeping:
             // Closed — gentle downward arcs with lash
@@ -411,6 +433,53 @@ struct PenguinMascot: View {
                         .offset(x: eyeSize * 0.28, y: -eyeSize * 0.30)
                 }
             }
+            
+        case .shy:
+            // Looking-down eyes with droopy half-lid
+            ZStack {
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: eyeSize * 1.1, height: eyeSize * 1.1)
+                Circle()
+                    .fill(PenguinColors.eyeBlack)
+                    .frame(width: eyeSize * 0.85, height: eyeSize * 0.85)
+                    .offset(y: eyeSize * 0.18)
+                Ellipse()
+                    .fill(PenguinColors.plumageDark)
+                    .frame(width: eyeSize * 1.3, height: eyeSize * 0.7)
+                    .offset(y: -eyeSize * 0.4)
+                Circle()
+                    .fill(Color.white.opacity(0.75))
+                    .frame(width: eyeSize * 0.25, height: eyeSize * 0.25)
+                    .offset(x: eyeSize * 0.12, y: eyeSize * 0.08)
+            }
+            
+        case .mischievous:
+            // Asymmetric — left squinted, right wide with gleam
+            if isRight {
+                ZStack {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: eyeSize * 1.25, height: eyeSize * 1.25)
+                    Circle()
+                        .fill(PenguinColors.eyeBlack)
+                        .frame(width: eyeSize * 1.05, height: eyeSize * 1.05)
+                        .offset(x: -eyeSize * 0.06)
+                    Circle()
+                        .fill(Color.white.opacity(0.92))
+                        .frame(width: eyeSize * 0.4, height: eyeSize * 0.4)
+                        .offset(x: eyeSize * 0.18, y: -eyeSize * 0.22)
+                    Circle()
+                        .fill(Color.white.opacity(0.5))
+                        .frame(width: eyeSize * 0.2, height: eyeSize * 0.2)
+                        .offset(x: -eyeSize * 0.15, y: eyeSize * 0.15)
+                }
+            } else {
+                CrescentEye()
+                    .fill(PenguinColors.eyeBlack)
+                    .frame(width: eyeSize * 0.9, height: eyeSize * 0.5)
+                    .offset(y: eyeSize * 0.05)
+            }
         }
     }
     
@@ -436,8 +505,9 @@ struct PenguinMascot: View {
     /// Blush intensity increases on happy/celebrating expressions
     private var blushIntensity: Double {
         switch expression {
-        case .happy, .celebrating, .talking:  return 0.35
-        case .thumbsUp:                        return 0.28
+        case .shy:                             return 0.55
+        case .happy, .celebrating, .talking:   return 0.35
+        case .thumbsUp, .mischievous:          return 0.28
         default:                               return 0.18
         }
     }
@@ -524,6 +594,35 @@ struct PenguinMascot: View {
                 }
                 .offset(y: -p * 0.26)
                 
+            case .mischievous:
+                // One raised, one flat — cocky look
+                HStack(spacing: p * 0.095) {
+                    Capsule()
+                        .fill(PenguinColors.plumageDark)
+                        .frame(width: p * 0.04, height: p * 0.008)
+                        .rotationEffect(.degrees(-15))
+                        .offset(y: -p * 0.01)
+                    Capsule()
+                        .fill(PenguinColors.plumageDark)
+                        .frame(width: p * 0.04, height: p * 0.008)
+                        .rotationEffect(.degrees(3))
+                }
+                .offset(y: -p * 0.26)
+                
+            case .shy:
+                // Worried upward eyebrows
+                HStack(spacing: p * 0.095) {
+                    Capsule()
+                        .fill(PenguinColors.plumageDark.opacity(0.5))
+                        .frame(width: p * 0.032, height: p * 0.006)
+                        .rotationEffect(.degrees(8))
+                    Capsule()
+                        .fill(PenguinColors.plumageDark.opacity(0.5))
+                        .frame(width: p * 0.032, height: p * 0.006)
+                        .rotationEffect(.degrees(-8))
+                }
+                .offset(y: -p * 0.26)
+                
             default:
                 EmptyView()
             }
@@ -535,7 +634,7 @@ struct PenguinMascot: View {
     //  Sway independently with overlapping action.
     
     private var penguinWings: some View {
-        HStack(spacing: p * 0.54) {
+        HStack(spacing: p * 0.48) {
             // Left wing — wider spacing to sit on chubby shoulders
             WingShape()
                 .fill(
@@ -564,9 +663,8 @@ struct PenguinMascot: View {
         .offset(y: p * 0.01)
     }
     
-    // MARK: - Scarf (wraps chubby neck junction)
-    //  Chubby: scarf_w = 0.64p, scarf_h = 0.11p, y -3.5%
-    //  Wider and lower to wrap the head-body junction properly.
+    // MARK: - Scarf (wraps slimmed neck junction)
+    //  Slimmed: scarf_w = 0.58p, scarf_h = 0.10p, y -3.5%
     
     private var penguinScarf: some View {
         ScarfShape()
@@ -581,28 +679,246 @@ struct PenguinMascot: View {
                 ScarfShape()
                     .stroke(Color(hex: "3399FF").opacity(0.5), lineWidth: p * 0.003)
             )
-            .frame(width: p * 0.64, height: p * 0.11)
+            .frame(width: p * 0.58, height: p * 0.10)
             .offset(x: reduceMotion ? 0 : scarfSway * 0.5, y: -p * 0.035)
     }
     
-    // MARK: - Feet (wider stance for chubby body)
-    //  Chubby: spacing 0.06p, size 0.18p, splayed ±12°.
-    //  Wider stance grounds the heavier body — waddly stability.
+    // MARK: - Feet (proportional stance for slimmed body)
+    //  Slimmed: spacing 0.045p, size 0.16p, splayed ±10°.
     
     private var penguinFeet: some View {
-        HStack(spacing: p * 0.06) {
-            // Left foot — wider stance grounds heavier chubby body
-            WebFootView(size: p * 0.18, color: Color(hex: "FF8C42"))
-                .rotationEffect(.degrees(-12))
-                .offset(x: -p * 0.025)
+        HStack(spacing: p * 0.045) {
+            WebFootView(size: p * 0.16, color: Color(hex: "FF8C42"))
+                .rotationEffect(.degrees(-10))
+                .offset(x: -p * 0.018)
             
-            // Right foot — toes point slightly right
-            WebFootView(size: p * 0.18, color: Color(hex: "FF8C42"))
-                .scaleEffect(x: -1, y: 1)  // Mirror
-                .rotationEffect(.degrees(12))
-                .offset(x: p * 0.025)
+            WebFootView(size: p * 0.16, color: Color(hex: "FF8C42"))
+                .scaleEffect(x: -1, y: 1)
+                .rotationEffect(.degrees(10))
+                .offset(x: p * 0.018)
         }
         .offset(y: p * 0.48)
+    }
+    
+    // MARK: - Green Beanie
+    //  Nudgy's signature forest-green knit beanie.
+    //  Drawn entirely with bezier paths — no images, no transparency issues.
+    //  Follows headTilt rotation and sits naturally on the crown of the head.
+    
+    private var penguinBeanie: some View {
+        let bw = p * 0.52   // beanie dome width
+        let bh = p * 0.24   // beanie dome height
+        
+        return ZStack {
+            // Main dome — rich forest green
+            BeanieShape()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: "66BB6A"),
+                            Color(hex: "4CAF50"),
+                            Color(hex: "388E3C"),
+                            Color(hex: "2E7D32"),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: bw, height: bh)
+            
+            // 3D depth — radial highlight for dome curvature
+            BeanieShape()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(0.14),
+                            Color.white.opacity(0.04),
+                            Color.clear,
+                        ],
+                        center: .init(x: 0.35, y: 0.30),
+                        startRadius: 0,
+                        endRadius: p * 0.22
+                    )
+                )
+                .frame(width: bw, height: bh)
+            
+            // Knit ribbing texture — vertical lines across dome
+            Path { path in
+                let ribs = 9
+                for i in 1..<ribs {
+                    let frac = CGFloat(i) / CGFloat(ribs)
+                    let x = bw * (0.12 + frac * 0.76)
+                    // Arc from mid-dome to brim, following curve
+                    path.move(to: CGPoint(x: x, y: bh * 0.18))
+                    path.addCurve(
+                        to: CGPoint(x: x, y: bh * 0.92),
+                        control1: CGPoint(x: x + bw * 0.01, y: bh * 0.45),
+                        control2: CGPoint(x: x - bw * 0.01, y: bh * 0.70)
+                    )
+                }
+            }
+            .stroke(Color.black.opacity(0.06), lineWidth: p * 0.003)
+            .frame(width: bw, height: bh)
+            .clipShape(BeanieShape())
+            
+            // Horizontal knit band — cream accent stripe across dome
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: "E8E0D0").opacity(0.0),
+                            Color(hex: "F5F0E8").opacity(0.35),
+                            Color(hex: "F5F0E8").opacity(0.40),
+                            Color(hex: "E8E0D0").opacity(0.0),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: bw * 0.88, height: p * 0.018)
+                .offset(y: bh * 0.15)
+                .clipShape(BeanieShape())
+            
+            // Subtle inner shadow at brim edge (depth under fold)
+            BeanieShape()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.clear,
+                            Color.clear,
+                            Color.black.opacity(0.10),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: p * 0.008
+                )
+                .frame(width: bw * 0.97, height: bh * 0.97)
+            
+            // Rim light (left edge catch)
+            BeanieShape()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.22),
+                            Color.white.opacity(0.06),
+                            Color.clear,
+                            Color.clear,
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: p * 0.005
+                )
+                .frame(width: bw, height: bh)
+            
+            // Folded brim / cuff — double-layer knit look
+            ZStack {
+                // Cuff body
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(hex: "1B5E20"),
+                                Color(hex: "2E7D32"),
+                                Color(hex: "338833"),
+                                Color(hex: "2E7D32"),
+                                Color(hex: "1B5E20"),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: p * 0.55, height: p * 0.062)
+                
+                // Cuff top highlight (folded edge catches light)
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.0),
+                                Color.white.opacity(0.12),
+                                Color.white.opacity(0.14),
+                                Color.white.opacity(0.0),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: p * 0.48, height: p * 0.012)
+                    .offset(y: -p * 0.022)
+                
+                // Cuff knit rib marks
+                HStack(spacing: p * 0.028) {
+                    ForEach(0..<7, id: \.self) { _ in
+                        Capsule()
+                            .fill(Color.black.opacity(0.05))
+                            .frame(width: p * 0.004, height: p * 0.04)
+                    }
+                }
+            }
+            .offset(y: p * 0.098)
+            
+            // Brim fold shadow (cast by the cuff)
+            Capsule()
+                .fill(Color.black.opacity(0.14))
+                .frame(width: p * 0.50, height: p * 0.008)
+                .offset(y: p * 0.128)
+            
+            // Pom-pom — fluffy yarn ball with texture
+            ZStack {
+                // Soft shadow underneath
+                Circle()
+                    .fill(Color.black.opacity(0.08))
+                    .frame(width: p * 0.10, height: p * 0.06)
+                    .offset(y: p * 0.008)
+                
+                // Base pom shape
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(hex: "FFF8F0"),
+                                Color(hex: "F5F0E8"),
+                                Color(hex: "E0D8C8"),
+                            ],
+                            center: .init(x: 0.38, y: 0.32),
+                            startRadius: 0,
+                            endRadius: p * 0.055
+                        )
+                    )
+                    .frame(width: p * 0.10, height: p * 0.10)
+                
+                // Yarn texture — tiny overlapping circles for fluffiness
+                ForEach(0..<6, id: \.self) { i in
+                    let angle = Double(i) * .pi / 3.0
+                    let r = p * 0.022
+                    Circle()
+                        .fill(Color.white.opacity(Double.random(in: 0.08...0.18)))
+                        .frame(width: p * 0.035, height: p * 0.035)
+                        .offset(
+                            x: CGFloat(cos(angle)) * r,
+                            y: CGFloat(sin(angle)) * r
+                        )
+                }
+                
+                // Specular highlight on pom
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.white.opacity(0.40), Color.clear],
+                            center: .init(x: 0.35, y: 0.25),
+                            startRadius: 0,
+                            endRadius: p * 0.035
+                        )
+                    )
+                    .frame(width: p * 0.08, height: p * 0.08)
+                    .offset(x: -p * 0.005, y: -p * 0.008)
+            }
+            .offset(x: p * 0.012, y: -p * 0.14)
+        }
+        .rotationEffect(.degrees(headTilt))
+        .offset(y: -p * 0.39)
     }
     
     // MARK: - Expression-Driven Properties
@@ -619,6 +935,8 @@ struct PenguinMascot: View {
         case .nudging:         return -8
         case .confused:        return 12
         case .typing:          return -3
+        case .shy:             return -6
+        case .mischievous:     return 8
         }
     }
     
@@ -695,6 +1013,21 @@ struct PenguinMascot: View {
                 .foregroundStyle(accentColor)
                 .offset(x: p * 0.30, y: -p * 0.05)
                 .opacity(0.8)
+            
+        case .shy:
+            // Tiny sweat drop
+            Text("💧")
+                .font(.system(size: p * 0.03))
+                .offset(x: p * 0.22, y: -p * 0.28)
+                .opacity(0.7)
+        
+        case .mischievous:
+            // Small tongue peeking out below beak
+            Ellipse()
+                .fill(Color(hex: "FF7B9C"))
+                .frame(width: p * 0.035, height: p * 0.025)
+                .rotationEffect(.degrees(headTilt))
+                .offset(x: p * 0.015, y: -p * 0.065)
             
         default:
             EmptyView()
@@ -823,42 +1156,86 @@ struct PenguinMascot: View {
             ) {
                 swayOffset = AnimationConstants.penguinSwayAmplitude * 0.6
             }
+            
+        case .shy:
+            startBlinkLoop()
+            // Shy body language — slight shrink
+            withAnimation(.easeInOut(duration: 2.0)) {
+                breatheScale = 0.965
+            }
+            withAnimation(
+                .easeInOut(duration: 4.0)
+                .repeatForever(autoreverses: true)
+            ) {
+                swayOffset = AnimationConstants.penguinSwayAmplitude * 0.3
+            }
+            
+        case .mischievous:
+            startBlinkLoop()
+            // Playful bouncy sway
+            withAnimation(
+                .easeInOut(duration: 1.6)
+                .repeatForever(autoreverses: true)
+            ) {
+                swayOffset = AnimationConstants.penguinSwayAmplitude * 1.3
+            }
+            // Scarf counter-sway with phase offset
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.3))
+                guard !Task.isCancelled else { return }
+                withAnimation(
+                    .easeInOut(duration: 1.8)
+                    .repeatForever(autoreverses: true)
+                ) {
+                    scarfSway = -AnimationConstants.penguinSwayAmplitude * 1.5
+                }
+            }
         }
     }
     
     private func startBlinkLoop() {
         // Blink for any expression with round open eyes
-        let blinkExpressions: [PenguinExpression] = [.idle, .listening, .waving, .nudging, .typing, .thumbsUp]
+        let blinkExpressions: [PenguinExpression] = [.idle, .listening, .waving, .nudging, .typing, .thumbsUp, .shy, .mischievous]
         guard blinkExpressions.contains(expression), !reduceMotion else { return }
         
-        // Add randomness to blink interval (±1.5s) for lifelike feel
-        let interval = AnimationConstants.penguinBlinkInterval + Double.random(in: -1.5...1.5)
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + interval) { [self] in
-            withAnimation(.easeOut(duration: AnimationConstants.penguinBlinkClose)) { blinkPhase = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + AnimationConstants.penguinBlinkClose + AnimationConstants.penguinBlinkHold) { [self] in
+        blinkTask?.cancel()
+        blinkTask = Task { @MainActor in
+            while !Task.isCancelled {
+                // Add randomness to blink interval (±1.5s) for lifelike feel
+                let interval = AnimationConstants.penguinBlinkInterval + Double.random(in: -1.5...1.5)
+                try? await Task.sleep(for: .seconds(interval))
+                guard !Task.isCancelled else { break }
+                
+                withAnimation(.easeOut(duration: AnimationConstants.penguinBlinkClose)) { blinkPhase = true }
+                try? await Task.sleep(for: .seconds(AnimationConstants.penguinBlinkClose + AnimationConstants.penguinBlinkHold))
+                guard !Task.isCancelled else { break }
+                
                 withAnimation(.easeOut(duration: AnimationConstants.penguinBlinkOpen)) { blinkPhase = false }
+                
                 // Occasionally do a double-blink (20% chance) for extra life
                 if Bool.random() && Int.random(in: 0...4) == 0 {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        withAnimation(.easeOut(duration: 0.08)) { blinkPhase = true }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                            withAnimation(.easeOut(duration: 0.1)) { blinkPhase = false }
-                        }
-                    }
+                    try? await Task.sleep(for: .seconds(0.15))
+                    guard !Task.isCancelled else { break }
+                    withAnimation(.easeOut(duration: 0.08)) { blinkPhase = true }
+                    try? await Task.sleep(for: .seconds(0.12))
+                    guard !Task.isCancelled else { break }
+                    withAnimation(.easeOut(duration: 0.1)) { blinkPhase = false }
                 }
-                startBlinkLoop()
             }
         }
     }
     
     private func startDotCycle() {
         guard (expression == .thinking || expression == .confused), !reduceMotion else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-            withAnimation(.easeOut(duration: 0.2)) {
-                dotPhase = (dotPhase + 1) % 3
+        dotCycleTask?.cancel()
+        dotCycleTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(0.5))
+                guard !Task.isCancelled else { break }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    dotPhase = (dotPhase + 1) % 3
+                }
             }
-            startDotCycle()
         }
     }
     
@@ -878,26 +1255,26 @@ struct PenguinMascot: View {
         guard expression == .talking, !reduceMotion else { return }
         
         // Small rapid bobs — 3 quick nods with decreasing amplitude
-        let bobSequence: [(CGFloat, TimeInterval)] = [
-            (-5, 0.0),
+        let bobSequence: [(offset: CGFloat, duration: TimeInterval)] = [
+            (-5, 0.15),
             (0, 0.15),
-            (-3.5, 0.30),
-            (0, 0.42),
-            (-2, 0.52),
-            (0, 0.62),
+            (-3.5, 0.12),
+            (0, 0.10),
+            (-2, 0.10),
+            (0, 0.58),  // Pause at rest before next cycle
         ]
         
-        for (offset, delay) in bobSequence {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                withAnimation(.spring(response: 0.15, dampingFraction: 0.6)) {
-                    self.bounceOffset = offset
+        talkingBobTask?.cancel()
+        talkingBobTask = Task { @MainActor in
+            while !Task.isCancelled {
+                for (offset, duration) in bobSequence {
+                    withAnimation(.spring(response: 0.15, dampingFraction: 0.6)) {
+                        self.bounceOffset = offset
+                    }
+                    try? await Task.sleep(for: .seconds(duration))
+                    guard !Task.isCancelled else { return }
                 }
             }
-        }
-        
-        // Loop after a pause
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [self] in
-            startTalkingBob()
         }
     }
     
@@ -936,6 +1313,8 @@ struct PenguinMascot: View {
         case .nudging:     return String(localized: "Nudgy reminding you about a task")
         case .confused:    return String(localized: "Nudgy looking confused")
         case .typing:      return String(localized: "Nudgy helping you type")
+        case .shy:         return String(localized: "Nudgy feeling shy")
+        case .mischievous: return String(localized: "Nudgy feeling mischievous")
         }
     }
 }
@@ -1285,6 +1664,59 @@ struct WebFootShape: Shape {
     }
 }
 
+/// Knit beanie dome — wide at brim, tapers to rounded crown.
+struct BeanieShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        
+        return Path { p in
+            p.move(to: CGPoint(x: w * 0.02, y: h))
+            p.addCurve(
+                to: CGPoint(x: w * 0.18, y: h * 0.10),
+                control1: CGPoint(x: -w * 0.01, y: h * 0.55),
+                control2: CGPoint(x: w * 0.06, y: h * 0.18)
+            )
+            p.addCurve(
+                to: CGPoint(x: w * 0.82, y: h * 0.10),
+                control1: CGPoint(x: w * 0.32, y: -h * 0.10),
+                control2: CGPoint(x: w * 0.68, y: -h * 0.10)
+            )
+            p.addCurve(
+                to: CGPoint(x: w * 0.98, y: h),
+                control1: CGPoint(x: w * 0.94, y: h * 0.18),
+                control2: CGPoint(x: w * 1.01, y: h * 0.55)
+            )
+            p.closeSubpath()
+        }
+    }
+}
+
+/// 5-pointed star eye shape for excited/celebrating expression.
+struct StarEye: Shape {
+    func path(in rect: CGRect) -> Path {
+        let cx = rect.midX
+        let cy = rect.midY
+        let outerR = min(rect.width, rect.height) / 2
+        let innerR = outerR * 0.38
+        let points = 5
+        
+        return Path { p in
+            for i in 0..<(points * 2) {
+                let angle = (Double(i) * .pi / Double(points)) - .pi / 2
+                let r = (i % 2 == 0) ? outerR : innerR
+                let pt = CGPoint(
+                    x: cx + CGFloat(cos(angle)) * r,
+                    y: cy + CGFloat(sin(angle)) * r
+                )
+                if i == 0 { p.move(to: pt) }
+                else { p.addLine(to: pt) }
+            }
+            p.closeSubpath()
+        }
+    }
+}
+
 // MARK: - Previews
 
 #Preview("All Expressions") {
@@ -1324,7 +1756,7 @@ struct WebFootShape: Shape {
             .happy:       "Single bounce · crescent smile eyes · warm blush",
             .thinking:    "Head tilted left · cycling thought dots · wide eyes",
             .sleeping:    "Slow breathing scale · floating zzz · closed lash eyes",
-            .celebrating: "Double bounce · crescent eyes · sparkle accessories",
+            .celebrating: "Double bounce · ★ star eyes · sparkle accessories",
             .thumbsUp:    "Quick nod · right wink · floating heart",
             .listening:   "Sway + blink · attentive eyebrows · head tilt left",
             .talking:     "Rhythmic head bob (3 nods) · sway · crescent eyes · extra blush",
@@ -1332,6 +1764,8 @@ struct WebFootShape: Shape {
             .nudging:     "Stern eyebrows · sway + blink · arms pointing",
             .confused:    "Asymmetric eyebrows · cycling dots · head tilted right 12°",
             .typing:      "Sway + blink · head tilt left · arms at rest",
+            .shy:         "Half-lid eyes · extra blush · subtle shrink · gentle sway",
+            .mischievous: "One squint one wide · raised eyebrow · tongue peek · bouncy sway",
         ]
         
         var body: some View {
@@ -1363,12 +1797,6 @@ struct WebFootShape: Shape {
                         }
                     }
                     .id(current) // Force re-create to restart animations
-                    
-                    // "NUDGY" label
-                    Text("NUDGY")
-                        .font(.system(.caption2, design: .rounded, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.3))
-                        .tracking(2.0)
                     
                     Spacer()
                     

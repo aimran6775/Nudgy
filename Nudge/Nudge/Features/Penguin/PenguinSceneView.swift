@@ -102,15 +102,6 @@ struct PenguinSceneView: View {
                     equippedAccessories: RewardService.shared.equippedAccessories,
                     useSpriteArt: false  // Flip to true when artist PNGs arrive
                 )
-                
-                // "Nudgy" name label (hero/large only)
-                if size == .hero || size == .large {
-                    Text(String(localized: "Nudgy"))
-                        .font(AppTheme.nudgyNameFont)
-                        .foregroundStyle(DesignTokens.textTertiary.opacity(0.5))
-                        .textCase(.uppercase)
-                        .tracking(2.0)
-                }
             }
             .scaleEffect(touchScale)
             .contentShape(Rectangle())  // Make entire frame tappable
@@ -194,11 +185,11 @@ struct PenguinSceneView: View {
             // Queue position
             if let posText = penguinState.queuePositionText {
                 Text(posText)
-                    .font(AppTheme.caption)
+                    .font(AppTheme.hudFont)
                     .foregroundStyle(DesignTokens.textTertiary)
             }
             
-            // Task content in a minimal card
+            // Task content in a glass card
             HStack(spacing: DesignTokens.spacingSM) {
                 if let emoji = penguinState.currentTaskEmoji {
                     Text(emoji)
@@ -214,14 +205,17 @@ struct PenguinSceneView: View {
             .padding(.horizontal, DesignTokens.spacingLG)
             .padding(.vertical, DesignTokens.spacingMD)
             .frame(maxWidth: 300)
-            .background(
+            .background {
                 RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                    .fill(DesignTokens.cardSurface.opacity(DesignTokens.cardOpacity))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.cornerRadiusCard)
-                            .strokeBorder(activeAccentColor.opacity(0.3), lineWidth: DesignTokens.cardBorderWidth)
+                    .fill(
+                        LinearGradient(
+                            colors: [activeAccentColor.opacity(0.08), .clear],
+                            startPoint: .top,
+                            endPoint: .center
+                        )
                     )
-            )
+            }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: DesignTokens.cornerRadiusCard))
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }

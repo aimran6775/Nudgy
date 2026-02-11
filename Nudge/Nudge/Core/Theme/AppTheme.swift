@@ -12,25 +12,34 @@ import SwiftUI
 enum AppTheme {
     
     // MARK: Typography
-    // Uses SF Pro (system) with Dynamic Type support throughout
-    // Defined as static properties so they can be used directly: `.font(AppTheme.body)`
+    //
+    // Design philosophy: "Warm on Cold"
+    // - Headings use SF Rounded — friendly warmth against the dark Antarctic glass
+    // - Body text stays SF Pro — clean, native, readable
+    // - Nudgy's voice uses SF Rounded at a heavier weight — it's HIS personality
+    // - Never use more than one custom font — consistency > novelty
+    //
+    // All fonts use Dynamic Type automatically via .system() initializers.
     
     /// Large display text — empty state messages, onboarding headings
-    static let displayFont: Font = .system(.largeTitle, design: .default, weight: .bold)
+    /// SF Rounded for warmth — this is where brand personality shows most
+    static let displayFont: Font = .system(.largeTitle, design: .rounded, weight: .bold)
     
     /// Card task title — the main text users read
-    static let taskTitle: Font = .system(.title2, design: .default, weight: .semibold)
+    /// Rounded to match display hierarchy — feels cohesive with headings
+    static let taskTitle: Font = .system(.title2, design: .rounded, weight: .semibold)
     
     /// Medium title — used in overlays and editors
-    static let title2: Font = .system(.title2, design: .default, weight: .semibold)
+    static let title2: Font = .system(.title2, design: .rounded, weight: .semibold)
     
     /// Small title — section names, form field headings
-    static let title3: Font = .system(.title3, design: .default, weight: .semibold)
+    static let title3: Font = .system(.title3, design: .rounded, weight: .semibold)
     
     /// Section headers, button labels
-    static let headline: Font = .system(.headline, design: .default, weight: .semibold)
+    static let headline: Font = .system(.headline, design: .rounded, weight: .semibold)
     
     /// Body text — descriptions, draft previews
+    /// SF Pro (default) for readability — warm headings + clean body = the balance
     static let body: Font = .system(.body, design: .default, weight: .regular)
     
     /// Secondary text — timestamps, metadata, hints
@@ -48,10 +57,17 @@ enum AppTheme {
     }
     
     /// Nudgy's speech bubble text — rounded, friendly, slightly warm
+    /// This IS Nudgy's voice — rounder and warmer than the rest of the UI
     static let nudgyBubbleFont: Font = .system(.callout, design: .rounded, weight: .medium)
     
     /// Nudgy's name label — used below the penguin when shown large
     static let nudgyNameFont: Font = .system(.caption2, design: .rounded, weight: .semibold)
+    
+    /// Status/HUD text — small rounded labels for counters, levels, badges
+    static let hudFont: Font = .system(.caption2, design: .rounded, weight: .bold)
+    
+    /// Hint text — small, muted instructions below interactive elements
+    static let hintFont: Font = .system(size: 11, weight: .medium, design: .rounded)
     
     /// Emoji display — large emoji on cards. Use `emoji(size:)` for custom sizes.
     static let emoji: Font = .system(size: 32)

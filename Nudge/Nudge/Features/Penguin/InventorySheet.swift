@@ -190,7 +190,7 @@ struct InventorySheet: View {
     private var nudgyStatusRow: some View {
         HStack(spacing: DesignTokens.spacingMD) {
             // Mini penguin expression
-            LottieNudgyView(
+            NudgySprite(
                 expression: penguinState.expression,
                 size: 36,
                 accentColor: penguinState.accentColor

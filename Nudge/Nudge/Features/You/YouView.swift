@@ -18,6 +18,7 @@ struct YouView: View {
     @Environment(PenguinState.self) private var penguinState
     @Environment(AuthSession.self) private var auth
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.selectedTab) private var selectedTab
 
     // Avatar
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -34,7 +35,7 @@ struct YouView: View {
     @State private var moodSaved = false
 
     // Reward service for aquarium data
-    @State private var rewardService = RewardService.shared
+    private var rewardService: RewardService { RewardService.shared }
 
     // AI insight
     @State private var moodInsightText: String?
@@ -114,17 +115,32 @@ struct YouView: View {
                         // MARK: Streak & Feeding
 
                         streakAndFeedingCard
+                            .scrollTransition(.animated(.spring(response: 0.4, dampingFraction: 0.85))) { content, phase in
+                                content
+                                    .opacity(phase.isIdentity ? 1 : 0.4)
+                                    .offset(y: phase.isIdentity ? 0 : 16)
+                            }
 
                         // MARK: Quick Mood Check-In
 
                         youSection(title: String(localized: "How are you feeling?")) {
                             quickMoodRow
                         }
+                        .scrollTransition(.animated(.spring(response: 0.4, dampingFraction: 0.85))) { content, phase in
+                            content
+                                .opacity(phase.isIdentity ? 1 : 0.4)
+                                .offset(y: phase.isIdentity ? 0 : 16)
+                        }
 
                         // MARK: AI Mood Insight
 
                         if !recentMoodEntries.isEmpty {
                             moodInsightCard
+                                .scrollTransition(.animated(.spring(response: 0.4, dampingFraction: 0.85))) { content, phase in
+                                    content
+                                        .opacity(phase.isIdentity ? 1 : 0.4)
+                                        .offset(y: phase.isIdentity ? 0 : 16)
+                                }
                         }
 
                         // MARK: Mood History
@@ -154,6 +170,11 @@ struct YouView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                        .scrollTransition(.animated(.spring(response: 0.4, dampingFraction: 0.85))) { content, phase in
+                            content
+                                .opacity(phase.isIdentity ? 1 : 0.4)
+                                .offset(y: phase.isIdentity ? 0 : 16)
+                        }
 
                         // MARK: Daily Review
 
@@ -168,6 +189,11 @@ struct YouView: View {
                                 )
                             }
                             .buttonStyle(.plain)
+                        }
+                        .scrollTransition(.animated(.spring(response: 0.4, dampingFraction: 0.85))) { content, phase in
+                            content
+                                .opacity(phase.isIdentity ? 1 : 0.4)
+                                .offset(y: phase.isIdentity ? 0 : 16)
                         }
 
                         // MARK: Upgrade (subtle banner if not Pro)
@@ -255,6 +281,7 @@ struct YouView: View {
         .onChange(of: rewardService.lastFishCatch?.id) { _, _ in
             guard let catchItem = rewardService.lastFishCatch else { return }
             ceremonyCatch = catchItem
+            rewardService.clearLastFishCatch()
             withAnimation(.easeOut(duration: 0.2)) {
                 showCatchCeremony = true
             }
@@ -852,10 +879,11 @@ struct YouView: View {
                     level: RewardService.shared.level,
                     stage: StageTier.from(level: RewardService.shared.level),
                     sceneWidth: geo.size.width,
-                    sceneHeight: geo.size.height
+                    sceneHeight: geo.size.height,
+                    isActive: selectedTab == .you
                 )
 
-                // Subtle breathing glow — slightly dimmer than Nudgy tab
+                // Subtle breathing glow unique to You tab
                 Circle()
                     .fill(
                         RadialGradient(

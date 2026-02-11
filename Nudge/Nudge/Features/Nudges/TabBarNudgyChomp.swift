@@ -23,6 +23,7 @@ struct TabBarNudgyChomp: View {
     @State private var heartOffset: CGFloat = 0
     @State private var heartOpacity: Double = 0
     @State private var bounce: CGFloat = 0
+    @State private var animationTask: Task<Void, Never>?
     
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
@@ -97,74 +98,81 @@ struct TabBarNudgyChomp: View {
             }
             .frame(width: 50, height: 60)
             .onAppear { runAnimation() }
+            .onDisappear { animationTask?.cancel() }
         }
     }
     
     private func runAnimation() {
+        animationTask?.cancel()
+        
         guard !reduceMotion else {
-            // Simplified: quick bounce and done
-            withAnimation(.spring(response: 0.3)) { peekOffset = 5 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            animationTask = Task { @MainActor in
+                withAnimation(.spring(response: 0.3)) { peekOffset = 5 }
+                try? await Task.sleep(for: .seconds(0.6))
+                guard !Task.isCancelled else { return }
                 withAnimation(.spring(response: 0.3)) { peekOffset = 50 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { isActive = false }
+                try? await Task.sleep(for: .seconds(0.3))
+                guard !Task.isCancelled else { return }
+                isActive = false
             }
             return
         }
         
-        // Step 1: Peek up (0.0s)
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-            peekOffset = 5
-        }
-        
-        // Step 2: Open mouth (0.3s)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        animationTask = Task { @MainActor in
+            // Step 1: Peek up
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                peekOffset = 5
+            }
+            
+            // Step 2: Open mouth
+            try? await Task.sleep(for: .seconds(0.3))
+            guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.1)) { mouthOpen = true }
-        }
-        
-        // Step 3: Fish flies in (0.4s)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            
+            // Step 3: Fish flies in
+            try? await Task.sleep(for: .seconds(0.1))
+            guard !Task.isCancelled else { return }
             withAnimation(.easeIn(duration: 0.2)) { fishOffset = 0 }
-        }
-        
-        // Step 4: Chomp — fish gone, mouth closes (0.6s)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
+            
+            // Step 4: Chomp — fish gone, mouth closes
+            try? await Task.sleep(for: .seconds(0.25))
+            guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.08)) {
                 fishVisible = false
                 mouthOpen = false
             }
             HapticService.shared.actionButtonTap()
-        }
-        
-        // Step 5: Happy bounce (0.75s)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+            
+            // Step 5: Happy bounce + heart
+            try? await Task.sleep(for: .seconds(0.1))
+            guard !Task.isCancelled else { return }
             withAnimation(.spring(response: 0.2, dampingFraction: 0.4)) {
                 bounce = -6
             }
-            // Heart float
             showHeart = true
             withAnimation(.easeOut(duration: 0.5)) {
                 heartOpacity = 1
                 heartOffset = -12
             }
-        }
-        
-        // Step 6: Settle (1.0s)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            
+            // Step 6: Settle
+            try? await Task.sleep(for: .seconds(0.25))
+            guard !Task.isCancelled else { return }
             withAnimation(.spring(response: 0.25)) { bounce = 0 }
             withAnimation(.easeOut(duration: 0.3)) {
                 heartOpacity = 0
             }
-        }
-        
-        // Step 7: Dip back down (1.4s)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            
+            // Step 7: Dip back down
+            try? await Task.sleep(for: .seconds(0.4))
+            guard !Task.isCancelled else { return }
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 peekOffset = 50
             }
-        }
-        
-        // Step 8: Cleanup (1.8s)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+            
+            // Step 8: Cleanup
+            try? await Task.sleep(for: .seconds(0.4))
+            guard !Task.isCancelled else { return }
             isActive = false
         }
     }

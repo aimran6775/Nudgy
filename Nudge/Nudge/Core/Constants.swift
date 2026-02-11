@@ -48,6 +48,32 @@ enum DesignTokens {
     /// Overdue — urgent items
     static let accentOverdue = Color(hex: "FF453A")
     
+    // MARK: Fish Economy Colors
+    
+    /// Gold — snowflakes, currency, challenge rewards
+    static let goldCurrency = Color(hex: "FFD700")
+    
+    /// Streak gradient start
+    static let streakOrange = Color(hex: "FF9F0A")
+    
+    /// Streak gradient end
+    static let streakDeep = Color(hex: "FF6B00")
+    
+    /// Snowflake / ice tint
+    static let snowflakeTint = Color(hex: "B3E5FC")
+    
+    /// Rare species — tropical fish
+    static let speciesTropical = Color(hex: "4DD0E1")
+    
+    /// Rare species — whale / purple
+    static let speciesRare = Color(hex: "AB47BC")
+    
+    /// Focus / creative actions
+    static let accentFocus = Color(hex: "BF5AF2")
+    
+    /// Indigo — links, search
+    static let accentIndigo = Color(hex: "5E5CE6")
+    
     // MARK: Spacing (4pt grid)
     
     static let spacingXS: CGFloat = 4

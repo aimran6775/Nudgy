@@ -24,6 +24,7 @@ struct NudgyHomeView: View {
     @Environment(PenguinState.self) private var penguinState
     @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.selectedTab) private var selectedTab
 
     @State private var hasGreeted = false
     @State private var breatheAnimation = false
@@ -33,7 +34,6 @@ struct NudgyHomeView: View {
     @State private var showHistory = false
     @FocusState private var isInputFocused: Bool
     // Wardrobe is now accessible via the unified inventory sheet
-    @State private var showInlineChat = false
     @State private var showInventory = false
     @State private var isVoiceEnabled: Bool = NudgyConfig.Voice.isEnabled
     
@@ -86,6 +86,11 @@ struct NudgyHomeView: View {
                 topBar
                     .padding(.horizontal, DesignTokens.spacingLG)
 
+                // At-a-glance stats strip — always visible, minimal
+                atAGlanceStats
+                    .padding(.horizontal, DesignTokens.spacingLG)
+                    .padding(.top, DesignTokens.spacingSM)
+
                 Spacer()
 
                 // ★ Nudgy — the whole point, positioned on the ice cliff
@@ -113,16 +118,16 @@ struct NudgyHomeView: View {
                 Spacer()
                     .frame(maxHeight: 20)
 
-                // Bottom action buttons: glassmorphic chat + voice
-                bottomActionButtons
+                // Bottom action buttons removed — NudgyCaptureBar
+                // is now the universal input surface on every tab.
+                // Voice conversation + brain dump voice remain accessible
+                // via the capture bar's mic button.
+                
+                // Spacer so Nudgy doesn't sit behind the capture bar
+                Spacer()
+                    .frame(height: 80)
             }
             .safeAreaPadding(.top, DesignTokens.spacingSM)
-
-            // Inline chat — glassmorphic text input at bottom
-            if showInlineChat {
-                inlineChatBar
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
 
             // Fish reward animation overlay
             FishRewardOverlay()
@@ -131,9 +136,11 @@ struct NudgyHomeView: View {
             CompletionFishBurst()
             
             // Option C: Fish pile munch overlay (when returning with pending fish)
-            NudgyPeekMunch(isActive: $showFishPileMunch, species: fishPileSpecies)
-                .allowsHitTesting(false)
-                .zIndex(50)
+            if showFishPileMunch {
+                NudgyPeekMunch(isActive: $showFishPileMunch, species: fishPileSpecies)
+                    .allowsHitTesting(false)
+                    .zIndex(50)
+            }
             
             // Stage-up celebration overlay
             if showStageUpCelebration {
@@ -144,23 +151,23 @@ struct NudgyHomeView: View {
                 .transition(.opacity)
                 .zIndex(100)
             }
-
-            // Inventory overlay — full-screen, fades over the scene
-            if showInventory {
-                CelestialExpandedOverlay(
-                    isExpanded: $showInventory,
-                    level: RewardService.shared.level,
-                    fishCount: RewardService.shared.snowflakes,
-                    streak: RewardService.shared.currentStreak,
-                    levelProgress: RewardService.shared.levelProgress,
-                    tasksToday: RewardService.shared.tasksCompletedToday,
-                    totalCompleted: totalCompletedCount,
-                    activeCount: activeQueue.count,
-                    stage: StageTier.from(level: RewardService.shared.level),
-                    challenges: RewardService.shared.dailyChallenges
-                )
-                .zIndex(200)
-            }
+        }
+        .fullScreenCover(isPresented: $showInventory) {
+            CelestialExpandedOverlay(
+                isExpanded: $showInventory,
+                level: RewardService.shared.level,
+                fishCount: RewardService.shared.snowflakes,
+                streak: RewardService.shared.currentStreak,
+                levelProgress: RewardService.shared.levelProgress,
+                tasksToday: RewardService.shared.tasksCompletedToday,
+                totalCompleted: totalCompletedCount,
+                activeCount: activeQueue.count,
+                stage: StageTier.from(level: RewardService.shared.level),
+                challenges: RewardService.shared.dailyChallenges
+            )
+            .environment(penguinState)
+            .presentationBackground(.clear)
+            .preferredColorScheme(.dark)
         }
         .preferredColorScheme(.dark)
         .onAppear {
@@ -246,7 +253,6 @@ struct NudgyHomeView: View {
     private var ambientBackground: some View {
         GeometryReader { geo in
             ZStack {
-                // Antarctic environment — Nudgy's home
                 AntarcticEnvironment(
                     mood: RewardService.shared.environmentMood,
                     unlockedProps: RewardService.shared.unlockedProps,
@@ -254,7 +260,8 @@ struct NudgyHomeView: View {
                     level: RewardService.shared.level,
                     stage: StageTier.from(level: RewardService.shared.level),
                     sceneWidth: geo.size.width,
-                    sceneHeight: geo.size.height
+                    sceneHeight: geo.size.height,
+                    isActive: selectedTab == .nudgy
                 )
 
                 // Subtle breathing glow behind penguin
@@ -366,14 +373,10 @@ struct NudgyHomeView: View {
             // Micro-reaction bubble (mood reactor)
             if let reaction = moodReactor.microReaction {
                 Text(reaction)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(AppTheme.hintFont)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(.ultraThinMaterial)
-                    )
                     .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
                     .offset(y: -90)
                     .transition(.opacity.combined(with: .offset(y: 10)))
@@ -385,7 +388,7 @@ struct NudgyHomeView: View {
 
     private var listeningIndicator: some View {
         VStack(spacing: DesignTokens.spacingSM) {
-            // Waveform bars
+            // Waveform bars in a glass pill
             HStack(spacing: 3) {
                 ForEach(0..<12, id: \.self) { i in
                     let level = i < speechService.waveformSamples.count
@@ -398,6 +401,9 @@ struct NudgyHomeView: View {
                 }
             }
             .frame(height: 34)
+            .padding(.horizontal, DesignTokens.spacingLG)
+            .padding(.vertical, DesignTokens.spacingSM)
+            .glassEffect(.regular, in: .capsule)
 
             // Live transcript preview — larger in conversation mode
             if !speechService.liveTranscript.isEmpty {
@@ -416,11 +422,11 @@ struct NudgyHomeView: View {
                 Text(speechService.liveTranscript.isEmpty
                      ? String(localized: "brain unload — listening...")
                      : String(localized: "pause to send"))
-                    .font(.system(size: 11, weight: .medium))
+                    .font(AppTheme.hintFont)
                     .foregroundStyle(DesignTokens.accentActive.opacity(0.6))
             } else {
                 Text(String(localized: "tap Nudgy to send"))
-                    .font(.system(size: 11))
+                    .font(AppTheme.hintFont)
                     .foregroundStyle(DesignTokens.textTertiary.opacity(0.6))
             }
         }
@@ -433,7 +439,7 @@ struct NudgyHomeView: View {
         HStack(spacing: 6) {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
-                    .fill(DesignTokens.accentActive.opacity(0.6))
+                    .fill(DesignTokens.accentActive.opacity(0.8))
                     .frame(width: 6, height: 6)
                     .offset(y: breatheAnimation ? -4 : 4)
                     .animation(
@@ -444,6 +450,9 @@ struct NudgyHomeView: View {
                     )
             }
         }
+        .padding(.horizontal, DesignTokens.spacingLG)
+        .padding(.vertical, DesignTokens.spacingSM)
+        .glassEffect(.regular, in: .capsule)
         .padding(.top, DesignTokens.spacingSM)
     }
     
@@ -453,13 +462,16 @@ struct NudgyHomeView: View {
         HStack(spacing: 6) {
             Image(systemName: "speaker.wave.2.fill")
                 .font(.system(size: 12))
-                .foregroundStyle(DesignTokens.accentActive.opacity(0.7))
+                .foregroundStyle(DesignTokens.accentActive.opacity(0.8))
                 .symbolEffect(.variableColor.iterative, isActive: true)
             
             Text(String(localized: "Nudgy is speaking..."))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(DesignTokens.textTertiary)
+                .font(AppTheme.hintFont)
+                .foregroundStyle(DesignTokens.textSecondary)
         }
+        .padding(.horizontal, DesignTokens.spacingLG)
+        .padding(.vertical, DesignTokens.spacingSM)
+        .glassEffect(.regular, in: .capsule)
         .padding(.top, DesignTokens.spacingSM)
     }
 
@@ -493,7 +505,7 @@ struct NudgyHomeView: View {
                 .foregroundStyle(DesignTokens.textTertiary)
                 .padding(.horizontal, DesignTokens.spacingSM)
                 .padding(.vertical, 4)
-                .background(Capsule().fill(Color.white.opacity(0.04)))
+                .glassEffect(.regular, in: .capsule)
         } else {
             HStack(alignment: .bottom, spacing: 6) {
                 if message.role == .user { Spacer(minLength: 80) }
@@ -510,16 +522,20 @@ struct NudgyHomeView: View {
                     .font(AppTheme.caption)
                     .foregroundStyle(
                         message.role == .user
-                            ? DesignTokens.textSecondary
-                            : DesignTokens.textTertiary
+                            ? DesignTokens.textPrimary
+                            : DesignTokens.textSecondary
                     )
                     .padding(.horizontal, DesignTokens.spacingMD)
                     .padding(.vertical, DesignTokens.spacingSM)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(message.role == .user
-                                  ? DesignTokens.accentActive.opacity(0.08)
-                                  : Color.white.opacity(0.03))
+                    .background {
+                        if message.role == .user {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(DesignTokens.accentActive.opacity(0.1))
+                        }
+                    }
+                    .glassEffect(
+                        message.role == .user ? .regular.interactive() : .regular,
+                        in: .rect(cornerRadius: 12)
                     )
                     .frame(maxWidth: 250, alignment: message.role == .user ? .trailing : .leading)
 
@@ -575,319 +591,60 @@ struct NudgyHomeView: View {
         }
     }
 
-    // MARK: - Bottom Action Buttons (glassmorphic)
-
-    private var bottomActionButtons: some View {
-        HStack(spacing: DesignTokens.spacingLG) {
-            // Chat history badge
-            if !penguinState.chatMessages.isEmpty {
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        showHistory.toggle()
-                    }
-                } label: {
-                    ZStack(alignment: .topTrailing) {
-                        Image(systemName: "text.bubble.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(DesignTokens.textSecondary)
-                            .frame(width: 44, height: 44)
-                            .background(
-                                Circle()
-                                    .fill(.ultraThinMaterial)
-                            )
-                            .glassEffect(.regular.interactive(), in: .circle)
-
-                        Text("\(penguinState.chatMessages.count)")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(Capsule().fill(DesignTokens.accentActive))
-                            .offset(x: 4, y: -2)
-                    }
-                }
-                .buttonStyle(.plain)
-                .transition(.scale.combined(with: .opacity))
-            }
-
-            Spacer()
-
-            // Voice conversation button (mic — tap = companion, long-press = brain dump)
-            ZStack {
-                if isVoiceConversation {
-                    Circle()
-                        .stroke(isBrainDumpVoice
-                                ? Color.orange.opacity(0.4)
-                                : DesignTokens.accentActive.opacity(0.4),
-                                lineWidth: 2)
-                        .frame(width: 64, height: 64)
-                        .scaleEffect(breatheAnimation ? 1.15 : 1.0)
-                        .opacity(breatheAnimation ? 0.3 : 0.7)
-                        .animation(
-                            .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
-                            value: breatheAnimation
-                        )
-                }
-
-                Circle()
-                    .fill(isVoiceConversation
-                          ? AnyShapeStyle(isBrainDumpVoice ? Color.orange : DesignTokens.accentActive)
-                          : isListeningToUser
-                              ? AnyShapeStyle(DesignTokens.accentActive.opacity(0.8))
-                              : AnyShapeStyle(DesignTokens.cardSurface))
-                    .frame(width: 56, height: 56)
-                    .background(
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                            .opacity(isVoiceConversation || isListeningToUser ? 0 : 1)
-                    )
-                    .overlay(
-                        Circle()
-                            .strokeBorder(
-                                isVoiceConversation || isListeningToUser
-                                    ? (isBrainDumpVoice ? Color.orange : DesignTokens.accentActive)
-                                    : Color.white.opacity(0.12),
-                                lineWidth: 0.5
-                            )
-                    )
-                    .shadow(color: DesignTokens.accentActive.opacity(0.15), radius: 12, y: 4)
-
-                Image(systemName: isVoiceConversation
-                      ? (isBrainDumpVoice ? "brain.head.profile.fill" : "waveform.circle.fill")
-                      : isListeningToUser
-                          ? "stop.fill"
-                          : "mic.fill")
-                    .font(.system(size: isVoiceConversation ? 24 : isListeningToUser ? 16 : 20))
-                    .foregroundStyle(isVoiceConversation || isListeningToUser ? .black : DesignTokens.accentActive)
-                    .symbolEffect(.pulse, isActive: isVoiceConversation && isListeningToUser)
-            }
-            .onTapGesture {
-                if isVoiceConversation {
-                    endVoiceConversation()
-                } else if isListeningToUser {
-                    stopListening()
-                } else {
-                    startCompanionConversation()
-                }
-            }
-            .onLongPressGesture(minimumDuration: 0.5) {
-                guard !isVoiceConversation && !isListeningToUser else { return }
-                HapticService.shared.actionButtonTap()
-                startBrainDumpVoice()
-            }
-            .disabled(penguinState.isChatGenerating && !isVoiceConversation)
-            .nudgeAccessibility(
-                label: isVoiceConversation
-                    ? String(localized: "End conversation")
-                    : isListeningToUser
-                        ? String(localized: "Stop listening")
-                        : String(localized: "Talk to Nudgy"),
-                hint: String(localized: "Tap to chat, long press for brain dump mode"),
-                traits: .isButton
-            )
-
-            // Type to chat button — toggles inline text input
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    showInlineChat.toggle()
-                    if showInlineChat {
-                        isInputFocused = true
-                    } else {
-                        isInputFocused = false
-                    }
-                }
-            } label: {
-                HStack(spacing: DesignTokens.spacingSM) {
-                    Image(systemName: showInlineChat ? "xmark" : "text.bubble.fill")
-                        .font(.system(size: 14))
-                        .contentTransition(.symbolEffect(.replace))
-                    if !showInlineChat {
-                        Text(String(localized: "Chat"))
-                            .font(.system(size: 14, weight: .medium))
-                    }
-                }
-                .foregroundStyle(showInlineChat ? DesignTokens.textSecondary : DesignTokens.textPrimary)
-                .padding(.horizontal, showInlineChat ? DesignTokens.spacingMD : DesignTokens.spacingLG)
-                .padding(.vertical, DesignTokens.spacingMD)
-                .background(
-                    Capsule()
-                        .fill(.ultraThinMaterial)
-                )
-                .glassEffect(.regular.interactive(), in: .capsule)
-            }
-            .buttonStyle(.plain)
-            .disabled(penguinState.isChatGenerating)
-            .nudgeAccessibility(
-                label: String(localized: "Type to chat with Nudgy"),
-                traits: .isButton
-            )
-
-            Spacer()
-
-            // Clear history
-            if !penguinState.chatMessages.isEmpty {
-                Button {
-                    withAnimation { NudgyEngine.shared.clearChat() }
-                } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 14))
+    // MARK: - At-a-Glance Stats
+    
+    /// Compact, always-visible stats below the top bar.
+    /// Shows daily progress, streak, and fish — just enough context without overwhelm.
+    private var atAGlanceStats: some View {
+        let done = RewardService.shared.tasksCompletedToday
+        let active = activeQueue.count
+        let total = done + active
+        let streak = RewardService.shared.currentStreak
+        let fish = RewardService.shared.snowflakes
+        
+        return HStack(spacing: DesignTokens.spacingLG) {
+            // Daily progress — "2 done · 3 to go"
+            HStack(spacing: 4) {
+                if total > 0 {
+                    Text("\(done)/\(total)")
+                        .font(AppTheme.rounded(.caption2, weight: .bold))
+                        .foregroundStyle(done > 0 ? DesignTokens.accentComplete : DesignTokens.textTertiary)
+                    Text(String(localized: "done"))
+                        .font(AppTheme.rounded(.caption2, weight: .medium))
                         .foregroundStyle(DesignTokens.textTertiary)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            Circle()
-                                .fill(.ultraThinMaterial)
-                        )
-                        .glassEffect(.regular.interactive(), in: .circle)
+                } else {
+                    Text(String(localized: "No tasks yet"))
+                        .font(AppTheme.rounded(.caption2, weight: .medium))
+                        .foregroundStyle(DesignTokens.textTertiary)
                 }
-                .buttonStyle(.plain)
-                .nudgeAccessibility(
-                    label: String(localized: "Reset conversation"),
-                    traits: .isButton
-                )
-                .transition(.scale.combined(with: .opacity))
             }
+            
+            if streak > 0 {
+                HStack(spacing: 2) {
+                    FlameIcon(size: 10)
+                    Text("\(streak)")
+                        .font(AppTheme.rounded(.caption2, weight: .bold))
+                        .foregroundStyle(streak >= 3 ? DesignTokens.streakOrange : DesignTokens.textTertiary)
+                }
+            }
+            
+            if fish > 0 {
+                HStack(spacing: 2) {
+                    MiniFishIcon(size: 10, species: nil)
+                    Text("\(fish)")
+                        .font(AppTheme.rounded(.caption2, weight: .bold))
+                        .foregroundStyle(DesignTokens.goldCurrency)
+                }
+            }
+            
+            Spacer()
         }
-        .padding(.horizontal, DesignTokens.spacingLG)
-        .padding(.bottom, DesignTokens.spacingMD)
-    }
-
-    // MARK: - Inline Chat Bar (glassmorphic)
-
-    private var inlineChatBar: some View {
-        VStack(spacing: 0) {
-            // Mini conversation context — last 3 messages
-            if !penguinState.chatMessages.isEmpty {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: DesignTokens.spacingSM) {
-                            ForEach(penguinState.chatMessages.suffix(20)) { message in
-                                inlineChatBubble(for: message)
-                                    .id(message.id)
-                            }
-
-                            if penguinState.isChatGenerating {
-                                HStack(spacing: 6) {
-                                    ForEach(0..<3, id: \.self) { i in
-                                        Circle()
-                                            .fill(DesignTokens.accentActive.opacity(0.5))
-                                            .frame(width: 5, height: 5)
-                                            .offset(y: penguinState.isChatGenerating ? -2 : 2)
-                                            .animation(
-                                                .easeInOut(duration: 0.45)
-                                                    .repeatForever(autoreverses: true)
-                                                    .delay(Double(i) * 0.12),
-                                                value: penguinState.isChatGenerating
-                                            )
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, DesignTokens.spacingSM)
-                                .id("typing")
-                            }
-                        }
-                        .padding(.horizontal, DesignTokens.spacingMD)
-                        .padding(.vertical, DesignTokens.spacingSM)
-                    }
-                    .frame(maxHeight: 200)
-                    .onChange(of: penguinState.chatMessages.count) { _, _ in
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            if penguinState.isChatGenerating {
-                                proxy.scrollTo("typing", anchor: .bottom)
-                            } else {
-                                proxy.scrollTo(penguinState.chatMessages.last?.id, anchor: .bottom)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Input field
-            HStack(spacing: DesignTokens.spacingSM) {
-                TextField(
-                    String(localized: "Message Nudgy..."),
-                    text: $inputText,
-                    axis: .vertical
-                )
-                .font(.system(size: 15))
-                .foregroundStyle(.white)
-                .lineLimit(1...3)
-                .focused($isInputFocused)
-                .onSubmit { sendTextMessage() }
-                .textFieldStyle(.plain)
-
-                if !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Button {
-                        sendTextMessage()
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 28))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(DesignTokens.accentActive)
-                    }
-                    .disabled(penguinState.isChatGenerating)
-                    .transition(.scale.combined(with: .opacity))
-                }
-            }
-            .padding(.horizontal, DesignTokens.spacingMD)
-            .padding(.vertical, DesignTokens.spacingSM + 2)
-            .background(
-                RoundedRectangle(cornerRadius: 22)
-                    .fill(.ultraThinMaterial)
-            )
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
-            .padding(.horizontal, DesignTokens.spacingLG)
-        }
-        .padding(.bottom, DesignTokens.spacingSM)
-        .background(
-            // Scrim behind chat area
-            LinearGradient(
-                colors: [Color.black.opacity(0.8), Color.black.opacity(0.4), .clear],
-                startPoint: .bottom,
-                endPoint: .top
-            )
-            .ignoresSafeArea(edges: .bottom)
+        .opacity(0.8)
+        .nudgeAccessibility(
+            label: String(localized: "\(done) of \(total) tasks done, \(streak) day streak, \(fish) fish"),
+            hint: String(localized: "Your daily progress at a glance"),
+            traits: .isStaticText
         )
-        .frame(maxWidth: .infinity)
-    }
-
-    @ViewBuilder
-    private func inlineChatBubble(for message: ChatMessage) -> some View {
-        if message.role == .system {
-            Text(message.text)
-                .font(.system(size: 11))
-                .foregroundStyle(DesignTokens.textTertiary)
-                .padding(.horizontal, DesignTokens.spacingSM)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.white.opacity(0.04)))
-                .frame(maxWidth: .infinity, alignment: .center)
-        } else {
-            HStack(alignment: .bottom, spacing: 6) {
-                if message.role == .user { Spacer(minLength: 48) }
-
-                // Tiny penguin avatar for Nudgy messages
-                if message.role == .nudgy {
-                    Text("🐧")
-                        .font(.system(size: 14))
-                        .frame(width: 22, height: 22)
-                        .offset(y: -2)
-                }
-
-                Text(message.text)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, DesignTokens.spacingMD)
-                    .padding(.vertical, DesignTokens.spacingSM)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(message.role == .user
-                                  ? DesignTokens.accentActive.opacity(0.2)
-                                  : Color.white.opacity(0.06))
-                    )
-                    .frame(maxWidth: 260, alignment: message.role == .user ? .trailing : .leading)
-
-                if message.role == .nudgy { Spacer(minLength: 48) }
-            }
-        }
     }
 
     // MARK: - Voice Conversation Loop
@@ -951,6 +708,7 @@ struct NudgyHomeView: View {
         isBrainDumpVoice = false
         speechService.silenceAutoSendEnabled = true
         HapticService.shared.micStart()
+        SoundService.shared.playMicStart()
         
         // Show a brief text bubble — NO TTS for the greeting (instant start)
         let greeting = companionGreetingWithMemory()
@@ -1220,17 +978,6 @@ struct NudgyHomeView: View {
         }
     }
 
-    // MARK: - Send Messages
-
-    private func sendTextMessage() {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !penguinState.isChatGenerating else { return }
-
-        inputText = ""
-        isInputFocused = false
-        sendToNudgy(text)
-    }
-
     /// Smart micro-reactions — instant contextual acknowledgment while AI is thinking.
     /// Replaces the generic "Let me think..." with something that shows Nudgy heard you.
     private static let thinkingReactions: [(keywords: [String], reactions: [String])] = [
@@ -1440,7 +1187,7 @@ struct NudgyHomeView: View {
         let hasOverdue = activeQueue.contains { $0.accentStatus == .overdue }
 
         // Determine if user is actively interacting
-        let isActive = isListeningToUser || isVoiceConversation || showInlineChat || penguinState.isChatGenerating
+        let isActive = isListeningToUser || isVoiceConversation || penguinState.isChatGenerating
 
         moodReactor.update(
             mood: RewardService.shared.environmentMood,

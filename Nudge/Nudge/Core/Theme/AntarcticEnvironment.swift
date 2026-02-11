@@ -424,33 +424,44 @@ private struct IceFloe: Identifiable {
 // MARK: - Parallax Motion Manager
 
 /// Reads device accelerometer to drive diorama-style parallax.
-/// Falls back gracefully in simulator or when motion is unavailable.
-private final class ParallaxMotionManager: ObservableObject {
-    @Published var xOffset: CGFloat = 0
-    @Published var yOffset: CGFloat = 0
+/// Shared singleton — Apple requires only ONE CMMotionManager per app.
+/// Reference-counted start/stop so multiple views can share safely.
+private final class ParallaxMotionManager {
+    static let shared = ParallaxMotionManager()
+
+    /// Raw accumulated offsets — NOT @Observable.
+    /// The coalesced timer reads these and copies to @State, so motion
+    /// never triggers independent body invalidations.
+    private(set) var xOffset: CGFloat = 0
+    private(set) var yOffset: CGFloat = 0
 
     private let motionManager = CMMotionManager()
-    private let sensitivity: CGFloat = 18  // max pixel offset
+    private let sensitivity: CGFloat = 18
+    private var refCount = 0
+
+    private init() {}
 
     func start() {
+        refCount += 1
+        guard refCount == 1 else { return }
         guard motionManager.isAccelerometerAvailable else { return }
-        motionManager.accelerometerUpdateInterval = 1.0 / 30.0
+        motionManager.accelerometerUpdateInterval = 1.0 / 20.0  // Match coalesced timer rate
         motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, _ in
             guard let self, let data else { return }
-            // Smooth towards target with lerp
             let targetX = CGFloat(data.acceleration.x) * self.sensitivity
             let targetY = CGFloat(data.acceleration.y) * self.sensitivity
+            // Smooth lerp — values accumulate here silently, no SwiftUI invalidation
             self.xOffset += (targetX - self.xOffset) * 0.12
             self.yOffset += (targetY - self.yOffset) * 0.12
         }
     }
 
     func stop() {
+        refCount = max(0, refCount - 1)
+        guard refCount == 0 else { return }
         motionManager.stopAccelerometerUpdates()
-    }
-
-    deinit {
-        stop()
+        xOffset = 0
+        yOffset = 0
     }
 }
 
@@ -468,6 +479,9 @@ struct AntarcticEnvironment: View {
     var sceneWidth: CGFloat = 390
     var sceneHeight: CGFloat = 844
 
+    /// When false, all timers and motion are paused (tab is off-screen).
+    var isActive: Bool = true
+
     /// Override time of day for previews.
     var timeOverride: AntarcticTimeOfDay?
 
@@ -476,10 +490,8 @@ struct AntarcticEnvironment: View {
     static let cliffSurfaceY: CGFloat = 0.78
 
     @State private var snowParticles: [SnowParticle] = []
-    @State private var snowTimer: Timer?
     @State private var stars: [Star] = []
     @State private var crystals: [IceCrystal] = []
-    @State private var crystalTimer: Timer?
     @State private var auroraPhase: Double = 0
     @State private var twinklePhase: Double = 0
     @State private var windPhase: Double = 0
@@ -491,16 +503,21 @@ struct AntarcticEnvironment: View {
     @State private var windSprites: [WindSprite] = []
     @State private var iceFloes: [IceFloe] = []
     @State private var cloudShadowOffset: CGFloat = -0.3
-    @State private var fogTimer: Timer?
-    @State private var shootingStarTimer: Timer?
-    @State private var windSpriteTimer: Timer?
+    
+    /// Single coalesced animation timer — replaces 6 independent timers.
+    /// One timer = one @State mutation batch per tick = one body invalidation.
+    @State private var animationTimer: Timer?
 
     // Moon animation state (Despicable Me style)
     @State private var moonGlowPulse: Bool = false
     @State private var moonHaloBreath: Bool = false
     @State private var moonDrift: Bool = false
 
-    @StateObject private var parallax = ParallaxMotionManager()
+    // Parallax offsets — updated by the coalesced timer from ParallaxMotionManager.
+    // NOT @Observable — eliminates independent accelerometer-driven body invalidations.
+    @State private var pX: CGFloat = 0
+    @State private var pY: CGFloat = 0
+    private let parallax = ParallaxMotionManager.shared
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -523,19 +540,19 @@ struct AntarcticEnvironment: View {
             // Layer 1a: Southern Cross (night)
             if time == .night {
                 southernCross
-                    .offset(x: parallax.xOffset * 0.05, y: parallax.yOffset * 0.05)
+                    .offset(x: pX * 0.05, y: pY * 0.05)
             }
 
             // Layer 1b: Moon (night) — Despicable Me scale
             if time.showMoon {
                 moonLayer
-                    .offset(x: parallax.xOffset * 0.06, y: parallax.yOffset * 0.06)
+                    .offset(x: pX * 0.06, y: pY * 0.06)
             }
 
             // Layer 1c: Sun glow (dawn/dusk)
             if time.showSunGlow {
                 sunGlowLayer
-                    .offset(x: parallax.xOffset * 0.08, y: parallax.yOffset * 0.08)
+                    .offset(x: pX * 0.08, y: pY * 0.08)
             }
 
             // Layer 1d: Shooting stars (night — rare, magical)
@@ -550,32 +567,32 @@ struct AntarcticEnvironment: View {
 
             // Layer 3: Far mountains — massive, hazy, atmospheric
             farMountains
-                .offset(x: parallax.xOffset * 0.12, y: parallax.yOffset * 0.06)
+                .offset(x: pX * 0.12, y: pY * 0.06)
 
             // Layer 3a: Cloud shadows sweeping across far mountains
             if !reduceMotion {
                 cloudShadowLayer
-                    .offset(x: parallax.xOffset * 0.12)
+                    .offset(x: pX * 0.12)
             }
 
             // Layer 3b: Fog wisps between far and mid mountains
             if !reduceMotion {
                 fogWispLayer
-                    .offset(x: parallax.xOffset * 0.15)
+                    .offset(x: pX * 0.15)
             }
 
             // Layer 4: Atmospheric haze band
             hazeLayer
-                .offset(x: parallax.xOffset * 0.15)
+                .offset(x: pX * 0.15)
 
             // Layer 5: Mid mountains — snow-covered, color-banded
             midMountains
-                .offset(x: parallax.xOffset * 0.25, y: parallax.yOffset * 0.10)
+                .offset(x: pX * 0.25, y: pY * 0.10)
 
             // Layer 5a: Fog wisps between mid and near
             if !reduceMotion {
                 fogWispLayerNear
-                    .offset(x: parallax.xOffset * 0.28)
+                    .offset(x: pX * 0.28)
             }
 
             // Layer 6: Volumetric light beams (dawn/dusk god-rays)
@@ -585,11 +602,11 @@ struct AntarcticEnvironment: View {
 
             // Layer 7: Cloud bank — bold, fluffy, lit from below
             cloudBank
-                .offset(x: parallax.xOffset * 0.30, y: parallax.yOffset * 0.12)
+                .offset(x: pX * 0.30, y: pY * 0.12)
 
             // Layer 8: Near mountains — dramatic, detailed, closest
             nearMountains
-                .offset(x: parallax.xOffset * 0.45, y: parallax.yOffset * 0.18)
+                .offset(x: pX * 0.45, y: pY * 0.18)
 
             // Layer 8a: Dark ocean with ice floes (between near mtns and shelf)
             oceanLayer
@@ -599,29 +616,29 @@ struct AntarcticEnvironment: View {
 
             // Layer 9: Ice shelf platform (Nudgy's home)
             iceShelfPlatform
-                .offset(x: parallax.xOffset * 0.55, y: parallax.yOffset * 0.22)
+                .offset(x: pX * 0.55, y: pY * 0.22)
 
             // Layer 9a: Nudgy's ground shadow
             nudgyGroundShadow
-                .offset(x: parallax.xOffset * 0.55, y: parallax.yOffset * 0.22)
+                .offset(x: pX * 0.55, y: pY * 0.22)
 
             // Layer 9b: Light pool on snow surface from lantern/campfire
             snowLightPool
-                .offset(x: parallax.xOffset * 0.55, y: parallax.yOffset * 0.22)
+                .offset(x: pX * 0.55, y: pY * 0.22)
 
             // Layer 9c: Warm light wash from props (campfire/lantern glow)
             if stage >= .cozyCamp || time == .night {
                 warmLightWash
-                    .offset(x: parallax.xOffset * 0.55, y: parallax.yOffset * 0.22)
+                    .offset(x: pX * 0.55, y: pY * 0.22)
             }
 
             // Layer 10: Cliff props
             cliffProps
-                .offset(x: parallax.xOffset * 0.55, y: parallax.yOffset * 0.22)
+                .offset(x: pX * 0.55, y: pY * 0.22)
 
             // Layer 11: Stage decorations
             StageDecorations(stage: stage, time: time, mood: mood)
-                .offset(x: parallax.xOffset * 0.55, y: parallax.yOffset * 0.22)
+                .offset(x: pX * 0.55, y: pY * 0.22)
 
             // Layer 11a: Snow blowing off the shelf edge
             if !reduceMotion {
@@ -643,6 +660,7 @@ struct AntarcticEnvironment: View {
                 stormOverlay
             }
         }
+        .drawingGroup()
         .clipped()
         .onAppear {
             generateStars()
@@ -650,28 +668,22 @@ struct AntarcticEnvironment: View {
             generateFogWisps()
             generateIceFloes()
             generateWindSprites()
-            startSnow()
-            startCrystals()
-            startAnimations()
-            startFogDrift()
-            startShootingStars()
-            startWindSprites()
-            if !reduceMotion {
-                parallax.start()
-                startMoonAnimations()
+            if isActive {
+                startAllTimers()
             }
         }
         .onDisappear {
-            stopSnow()
-            stopCrystals()
-            stopFogDrift()
-            stopShootingStars()
-            stopWindSprites()
-            parallax.stop()
+            stopAllTimers()
+        }
+        .onChange(of: isActive) { _, active in
+            if active {
+                startAllTimers()
+            } else {
+                stopAllTimers()
+            }
         }
         .onChange(of: mood) { _, _ in
-            stopSnow()
-            startSnow()
+            initSnowParticles()
         }
     }
 
@@ -1571,17 +1583,17 @@ struct AntarcticEnvironment: View {
             let surfaceY = geo.size.height * Self.cliffSurfaceY - 8
 
             FishBucket(fishCount: fishCount, tint: time.icicleColor)
-                .frame(width: 36, height: 40)
-                .position(x: geo.size.width * 0.12, y: surfaceY - 14)
+                .frame(width: 58, height: 64)
+                .position(x: geo.size.width * 0.12, y: surfaceY - 24)
 
             LevelFlag(level: level, time: time)
-                .frame(width: 24, height: 50)
-                .position(x: geo.size.width * 0.88, y: surfaceY - 20)
+                .frame(width: 44, height: 72)
+                .position(x: geo.size.width * 0.88, y: surfaceY - 30)
 
             if unlockedProps.contains("lantern") || time == .night {
                 CliffLantern(time: time)
-                    .frame(width: 16, height: 24)
-                    .position(x: geo.size.width * 0.75, y: surfaceY - 8)
+                    .frame(width: 38, height: 50)
+                    .position(x: geo.size.width * 0.75, y: surfaceY - 18)
             }
         }
         .allowsHitTesting(false)
@@ -2700,29 +2712,117 @@ struct AntarcticEnvironment: View {
         }
     }
 
-    private func startAnimations() {
-        guard !reduceMotion else { return }
+    // MARK: - Bulk Timer Control
 
-        withAnimation(.easeInOut(duration: 12.0).repeatForever(autoreverses: true)) {
-            auroraPhase = .pi * 2
-        }
-
-        withAnimation(.linear(duration: 25.0).repeatForever(autoreverses: false)) {
-            windPhase = .pi * 2
-        }
-
-        withAnimation(.easeInOut(duration: 6.0).repeatForever(autoreverses: true)) {
-            beamPulse = .pi * 2
-        }
-
-        Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { _ in
-            twinklePhase += 0.05
+    /// Starts the single coalesced animation timer + motion manager.
+    private func startAllTimers() {
+        startCoalescedTimer()
+        initSnowParticles()
+        startAnimations()
+        if !reduceMotion {
+            parallax.start()
+            startMoonAnimations()
         }
     }
 
-    private func startSnow() {
+    /// Stops the coalesced timer + motion manager.
+    private func stopAllTimers() {
+        animationTimer?.invalidate()
+        animationTimer = nil
+        parallax.stop()
+    }
+    
+    /// Single 20fps timer that updates ALL particle systems in one batch.
+    /// This replaces 6 independent timers, reducing body invalidations from 6/tick to 1/tick.
+    private func startCoalescedTimer() {
         guard !reduceMotion else { return }
-
+        animationTimer?.invalidate()
+        
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { _ in
+            let dt: CGFloat = 1.0 / 20.0
+            
+            // — Sample parallax from motion manager (batched, not independent) —
+            pX = parallax.xOffset
+            pY = parallax.yOffset
+            
+            // — Snow particles (was 30fps, now 20fps — imperceptible) —
+            for i in snowParticles.indices {
+                snowParticles[i].y += snowParticles[i].speed * dt
+                snowParticles[i].x += snowParticles[i].drift * dt
+                snowParticles[i].wobblePhase += snowParticles[i].wobbleSpeed * dt
+                
+                if snowParticles[i].y > sceneHeight + 10 {
+                    snowParticles[i].y = CGFloat.random(in: -30 ... -5)
+                    snowParticles[i].x = CGFloat.random(in: 0...sceneWidth)
+                }
+            }
+            
+            // — Crystal sparkles —
+            for i in crystals.indices {
+                crystals[i].y += crystals[i].driftSpeed * dt
+                crystals[i].rotation += crystals[i].rotationSpeed * dt
+                crystals[i].x += sin(crystals[i].rotation * 0.5) * 0.3
+                
+                if crystals[i].y < sceneHeight * 0.2 {
+                    crystals[i].y = sceneHeight * 0.75 + CGFloat.random(in: 0...20)
+                    crystals[i].x = CGFloat.random(in: 20...(sceneWidth - 20))
+                }
+            }
+            
+            // — Fog wisps + ice floes + cloud shadow —
+            for i in fogWisps.indices {
+                fogWisps[i].x += fogWisps[i].speed * dt
+                if fogWisps[i].speed > 0 && fogWisps[i].x > sceneWidth + 120 {
+                    fogWisps[i].x = -120
+                } else if fogWisps[i].speed < 0 && fogWisps[i].x < -120 {
+                    fogWisps[i].x = sceneWidth + 120
+                }
+            }
+            for i in iceFloes.indices {
+                iceFloes[i].x += iceFloes[i].speed * dt
+                if iceFloes[i].x > sceneWidth + 30 {
+                    iceFloes[i].x = -30
+                }
+            }
+            cloudShadowOffset += 0.0003
+            if cloudShadowOffset > 1.3 { cloudShadowOffset = -0.3 }
+            
+            // — Shooting stars (rare spawn + update) —
+            if time == .night && shootingStars.count < 2 && Double.random(in: 0...1) < 0.003 {
+                shootingStars.append(AntarcticShootingStar(
+                    x: CGFloat.random(in: sceneWidth * 0.1...sceneWidth * 0.9),
+                    y: CGFloat.random(in: sceneHeight * 0.02...sceneHeight * 0.18),
+                    angle: CGFloat.random(in: 0.3...1.0),
+                    speed: CGFloat.random(in: 200...400),
+                    length: CGFloat.random(in: 30...60),
+                    brightness: Double.random(in: 0.5...0.9),
+                    life: 0,
+                    maxLife: CGFloat.random(in: 0.4...0.8)
+                ))
+            }
+            for i in shootingStars.indices {
+                shootingStars[i].x += cos(shootingStars[i].angle) * shootingStars[i].speed * dt
+                shootingStars[i].y += sin(shootingStars[i].angle) * shootingStars[i].speed * dt
+                shootingStars[i].life += dt
+            }
+            shootingStars.removeAll { $0.life >= $0.maxLife }
+            
+            // — Wind sprites —
+            for i in windSprites.indices {
+                windSprites[i].x += windSprites[i].speed * dt
+                if windSprites[i].x > sceneWidth + 50 {
+                    windSprites[i].x = CGFloat.random(in: -40 ... -10)
+                }
+            }
+            
+            // — Twinkle phase —
+            twinklePhase += 0.05
+        }
+    }
+    
+    /// Initialize snow particles for current mood (called on appear and mood change).
+    private func initSnowParticles() {
+        guard !reduceMotion else { return }
         let baseCount = Int(30 * mood.snowIntensity)
         snowParticles = (0..<baseCount).map { _ in
             SnowParticle(
@@ -2737,48 +2837,22 @@ struct AntarcticEnvironment: View {
                 wobblePhase: CGFloat.random(in: 0...(CGFloat.pi * 2))
             )
         }
-
-        snowTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { _ in
-            let dt: CGFloat = 1.0 / 30.0
-            for i in snowParticles.indices {
-                snowParticles[i].y += snowParticles[i].speed * dt
-                snowParticles[i].x += snowParticles[i].drift * dt
-                snowParticles[i].wobblePhase += snowParticles[i].wobbleSpeed * dt
-
-                if snowParticles[i].y > sceneHeight + 10 {
-                    snowParticles[i].y = CGFloat.random(in: -30 ... -5)
-                    snowParticles[i].x = CGFloat.random(in: 0...sceneWidth)
-                }
-            }
-        }
     }
 
-    private func stopSnow() {
-        snowTimer?.invalidate()
-        snowTimer = nil
-    }
-
-    private func startCrystals() {
+    private func startAnimations() {
         guard !reduceMotion else { return }
 
-        crystalTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { _ in
-            let dt: CGFloat = 1.0 / 20.0
-            for i in crystals.indices {
-                crystals[i].y += crystals[i].driftSpeed * dt
-                crystals[i].rotation += crystals[i].rotationSpeed * dt
-                crystals[i].x += sin(crystals[i].rotation * 0.5) * 0.3
-
-                if crystals[i].y < sceneHeight * 0.2 {
-                    crystals[i].y = sceneHeight * 0.75 + CGFloat.random(in: 0...20)
-                    crystals[i].x = CGFloat.random(in: 20...(sceneWidth - 20))
-                }
-            }
+        withAnimation(.easeInOut(duration: 12.0).repeatForever(autoreverses: true)) {
+            auroraPhase = .pi * 2
         }
-    }
 
-    private func stopCrystals() {
-        crystalTimer?.invalidate()
-        crystalTimer = nil
+        withAnimation(.linear(duration: 25.0).repeatForever(autoreverses: false)) {
+            windPhase = .pi * 2
+        }
+
+        withAnimation(.easeInOut(duration: 6.0).repeatForever(autoreverses: true)) {
+            beamPulse = .pi * 2
+        }
     }
 
     // ═══════════════════════════════════════════════
@@ -2824,115 +2898,6 @@ struct AntarcticEnvironment: View {
                 opacity: Double.random(in: 0.06...0.18)
             )
         }
-    }
-
-    private func startFogDrift() {
-        guard !reduceMotion else { return }
-
-        fogTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { _ in
-            let dt: CGFloat = 1.0 / 20.0
-            for i in fogWisps.indices {
-                fogWisps[i].x += fogWisps[i].speed * dt
-
-                // Wrap around when off-screen
-                if fogWisps[i].speed > 0 && fogWisps[i].x > sceneWidth + 120 {
-                    fogWisps[i].x = -120
-                } else if fogWisps[i].speed < 0 && fogWisps[i].x < -120 {
-                    fogWisps[i].x = sceneWidth + 120
-                }
-            }
-
-            // Ice floes drift slowly
-            for i in iceFloes.indices {
-                var floe = iceFloes[i]
-                floe.x += floe.speed * dt
-                if floe.x > sceneWidth + 30 {
-                    floe.x = -30
-                }
-                iceFloes[i] = IceFloe(
-                    x: floe.x, y: floe.y, width: floe.width, height: floe.height,
-                    speed: floe.speed, opacity: floe.opacity, cornerRadius: floe.cornerRadius
-                )
-            }
-
-            // Cloud shadow sweep — very slow continuous scroll
-            cloudShadowOffset += 0.0003
-            if cloudShadowOffset > 1.3 {
-                cloudShadowOffset = -0.3
-            }
-        }
-    }
-
-    private func stopFogDrift() {
-        fogTimer?.invalidate()
-        fogTimer = nil
-    }
-
-    private func startShootingStars() {
-        guard !reduceMotion else { return }
-
-        // Spawn a shooting star every 6-15 seconds
-        shootingStarTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { _ in
-            let dt: CGFloat = 1.0 / 20.0
-
-            // Random spawn (rare)
-            if time == .night && shootingStars.count < 2 && Double.random(in: 0...1) < 0.003 {
-                let star = AntarcticShootingStar(
-                    x: CGFloat.random(in: sceneWidth * 0.1...sceneWidth * 0.9),
-                    y: CGFloat.random(in: sceneHeight * 0.02...sceneHeight * 0.18),
-                    angle: CGFloat.random(in: 0.3...1.0),  // roughly 20-60 degrees
-                    speed: CGFloat.random(in: 200...400),
-                    length: CGFloat.random(in: 30...60),
-                    brightness: Double.random(in: 0.5...0.9),
-                    life: 0,
-                    maxLife: CGFloat.random(in: 0.4...0.8)
-                )
-                shootingStars.append(star)
-            }
-
-            // Update existing
-            for i in shootingStars.indices.reversed() {
-                shootingStars[i].x += cos(shootingStars[i].angle) * shootingStars[i].speed * dt
-                shootingStars[i].y += sin(shootingStars[i].angle) * shootingStars[i].speed * dt
-                shootingStars[i].life += dt
-
-                if shootingStars[i].life >= shootingStars[i].maxLife {
-                    shootingStars.remove(at: i)
-                }
-            }
-        }
-    }
-
-    private func stopShootingStars() {
-        shootingStarTimer?.invalidate()
-        shootingStarTimer = nil
-    }
-
-    private func startWindSprites() {
-        guard !reduceMotion else { return }
-
-        windSpriteTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { _ in
-            let dt: CGFloat = 1.0 / 20.0
-            for i in windSprites.indices {
-                var sprite = windSprites[i]
-                sprite.x += sprite.speed * dt
-
-                if sprite.x > sceneWidth + 50 {
-                    sprite.x = CGFloat.random(in: -40 ... -10)
-                }
-
-                windSprites[i] = WindSprite(
-                    x: sprite.x, y: sprite.y,
-                    speed: sprite.speed, size: sprite.size,
-                    opacity: sprite.opacity
-                )
-            }
-        }
-    }
-
-    private func stopWindSprites() {
-        windSpriteTimer?.invalidate()
-        windSpriteTimer = nil
     }
 }
 
@@ -3705,6 +3670,79 @@ private struct CinematicIcicles: View {
 
 // MARK: - Fish Bucket Prop
 
+private struct BucketBodyShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            let w = rect.width, h = rect.height
+            // Top rim
+            p.move(to: CGPoint(x: w * 0.18, y: h * 0.28))
+            // Left wall — slight outward bow
+            p.addCurve(
+                to: CGPoint(x: w * 0.10, y: h * 0.95),
+                control1: CGPoint(x: w * 0.16, y: h * 0.48),
+                control2: CGPoint(x: w * 0.08, y: h * 0.78)
+            )
+            // Bottom — smooth rounded base
+            p.addCurve(
+                to: CGPoint(x: w * 0.90, y: h * 0.95),
+                control1: CGPoint(x: w * 0.25, y: h * 1.06),
+                control2: CGPoint(x: w * 0.75, y: h * 1.06)
+            )
+            // Right wall — slight outward bow
+            p.addCurve(
+                to: CGPoint(x: w * 0.82, y: h * 0.28),
+                control1: CGPoint(x: w * 0.92, y: h * 0.78),
+                control2: CGPoint(x: w * 0.84, y: h * 0.48)
+            )
+            p.closeSubpath()
+        }
+    }
+}
+
+private struct BucketHandleShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            let w = rect.width
+            p.addArc(
+                center: CGPoint(x: w / 2, y: rect.height * 0.26),
+                radius: w * 0.26,
+                startAngle: .degrees(185),
+                endAngle: .degrees(-5),
+                clockwise: false
+            )
+        }
+    }
+}
+
+private struct TinyFishShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            let w = rect.width, h = rect.height
+            let cx = w * 0.5, cy = h * 0.5
+            let sz = min(w, h) * 0.4
+            // Nose
+            p.move(to: CGPoint(x: cx - sz, y: cy))
+            // Top body arc — smooth belly
+            p.addCurve(
+                to: CGPoint(x: cx + sz * 0.6, y: cy),
+                control1: CGPoint(x: cx - sz * 0.3, y: cy - sz * 0.62),
+                control2: CGPoint(x: cx + sz * 0.25, y: cy - sz * 0.58)
+            )
+            // Tail fork
+            p.addLine(to: CGPoint(x: cx + sz, y: cy - sz * 0.35))
+            p.addLine(to: CGPoint(x: cx + sz * 0.6, y: cy))
+            p.addLine(to: CGPoint(x: cx + sz, y: cy + sz * 0.35))
+            // Bottom body arc — smooth belly
+            p.addCurve(
+                to: CGPoint(x: cx - sz, y: cy),
+                control1: CGPoint(x: cx + sz * 0.25, y: cy + sz * 0.58),
+                control2: CGPoint(x: cx - sz * 0.3, y: cy + sz * 0.62)
+            )
+            p.closeSubpath()
+        }
+    }
+}
+
 private struct FishBucket: View {
     let fishCount: Int
     let tint: Color
@@ -3714,79 +3752,140 @@ private struct FishBucket: View {
     }
 
     var body: some View {
-        Canvas { context, size in
-            let w = size.width
-            let h = size.height
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
 
-            let bucketPath = Path { p in
-                p.move(to: CGPoint(x: w * 0.15, y: h * 0.25))
-                p.addLine(to: CGPoint(x: w * 0.08, y: h))
-                p.addLine(to: CGPoint(x: w * 0.92, y: h))
-                p.addLine(to: CGPoint(x: w * 0.85, y: h * 0.25))
-                p.closeSubpath()
-            }
-
-            let fillTop = h * (1.0 - fillLevel * 0.65)
-            let fillPath = Path { p in
-                let leftX = w * 0.08 + (w * 0.15 - w * 0.08) * ((fillTop - h * 0.25) / (h - h * 0.25))
-                let rightX = w * 0.92 - (w * 0.92 - w * 0.85) * ((fillTop - h * 0.25) / (h - h * 0.25))
-                p.move(to: CGPoint(x: max(w * 0.08, leftX), y: fillTop))
-                p.addLine(to: CGPoint(x: w * 0.08, y: h))
-                p.addLine(to: CGPoint(x: w * 0.92, y: h))
-                p.addLine(to: CGPoint(x: min(w * 0.92, rightX), y: fillTop))
-                p.closeSubpath()
-            }
-
-            if fishCount > 0 {
-                context.fill(fillPath, with: .linearGradient(
-                    Gradient(colors: [
-                        Color(hex: "FFB800").opacity(0.7),
-                        Color(hex: "FF8C00").opacity(0.5)
-                    ]),
-                    startPoint: CGPoint(x: w / 2, y: fillTop),
-                    endPoint: CGPoint(x: w / 2, y: h)
-                ))
-            }
-
-            context.stroke(bucketPath, with: .color(Color(hex: "8B6914").opacity(0.6)), lineWidth: 1.5)
-            context.fill(bucketPath, with: .color(Color(hex: "5A3E0A").opacity(0.3)))
-
-            let handlePath = Path { p in
-                p.addArc(
-                    center: CGPoint(x: w / 2, y: h * 0.25),
-                    radius: w * 0.28,
-                    startAngle: .degrees(180),
-                    endAngle: .degrees(0),
-                    clockwise: false
+            // ── Dark bucket interior ──
+            BucketBodyShape()
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: "1A1208"), Color(hex: "0E0A04")],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
                 )
-            }
-            context.stroke(handlePath, with: .color(Color(hex: "8B6914").opacity(0.5)), lineWidth: 1.2)
+                .frame(width: w, height: h)
 
+            // ── Fish fill (golden mass — visible inside) ──
             if fishCount > 0 {
-                let fishPositions: [(CGFloat, CGFloat)] = [
-                    (0.35, 0.7), (0.55, 0.75), (0.45, 0.85),
-                    (0.3, 0.8), (0.6, 0.65),
+                BucketFillShape(fillLevel: fillLevel)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: "FFD040"), Color(hex: "FFB800"), Color(hex: "E67A00")],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: w, height: h)
+            }
+
+            // ── Bucket walls (thick stroke, not filled — lets interior show) ──
+            BucketBodyShape()
+                .stroke(
+                    LinearGradient(
+                        colors: [Color(hex: "8B6B30"), Color(hex: "6B4A1A"), Color(hex: "3A280A")],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 3.5
+                )
+                .frame(width: w, height: h)
+
+            // ── Metal bands ──
+            ForEach([0.45, 0.70] as [CGFloat], id: \.self) { frac in
+                Rectangle()
+                    .fill(Color(hex: "888888"))
+                    .frame(width: w * 0.72, height: 1.2)
+                    .position(x: w * 0.5, y: h * frac)
+            }
+
+            // ── Rim ──
+            Rectangle()
+                .fill(Color(hex: "999999"))
+                .frame(width: w * 0.7, height: 2)
+                .position(x: w * 0.5, y: h * 0.26)
+
+            // ── Handle ──
+            BucketHandleShape()
+                .stroke(Color(hex: "808080"), lineWidth: 1.8)
+                .frame(width: w, height: h)
+
+            // ── Fish inside ──
+            if fishCount > 0 {
+                let positions: [(x: CGFloat, y: CGFloat)] = [
+                    (0.35, 0.65), (0.55, 0.72), (0.45, 0.82),
+                    (0.30, 0.76), (0.62, 0.62), (0.50, 0.55),
                 ]
-                let visibleFish = min(fishPositions.count, max(1, fishCount / 3))
-                for i in 0..<visibleFish {
-                    let pos = fishPositions[i]
-                    let fx = w * pos.0
-                    let fy = h * pos.1
-                    let fishPath = Path { p in
-                        p.move(to: CGPoint(x: fx - 3, y: fy))
-                        p.addLine(to: CGPoint(x: fx, y: fy - 1.5))
-                        p.addLine(to: CGPoint(x: fx + 3, y: fy))
-                        p.addLine(to: CGPoint(x: fx, y: fy + 1.5))
-                        p.closeSubpath()
-                    }
-                    context.fill(fishPath, with: .color(Color(hex: "FFD700").opacity(0.8)))
+                let visible = min(positions.count, max(1, fishCount / 2))
+                ForEach(0..<visible, id: \.self) { i in
+                    TinyFishShape()
+                        .fill(Color(hex: "FFD700"))
+                        .frame(width: 10, height: 8)
+                        .position(x: w * positions[i].x, y: h * positions[i].y)
                 }
             }
         }
     }
 }
 
+/// Fill inside the bucket — clips to bucket walls at the given level.
+private struct BucketFillShape: Shape {
+    let fillLevel: CGFloat
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            let w = rect.width, h = rect.height
+            let fillTop = h * (1.0 - fillLevel * 0.58)
+            let wallSlope = (h * 0.95 - h * 0.28)
+            let topLeft = w * 0.10 + (w * 0.18 - w * 0.10) * ((h * 0.95 - fillTop) / wallSlope)
+            let topRight = w * 0.90 - (w * 0.90 - w * 0.82) * ((h * 0.95 - fillTop) / wallSlope)
+            p.move(to: CGPoint(x: topLeft, y: fillTop))
+            // Left wall to bottom
+            p.addCurve(
+                to: CGPoint(x: w * 0.10, y: h * 0.95),
+                control1: CGPoint(x: topLeft - w * 0.01, y: fillTop + (h * 0.95 - fillTop) * 0.4),
+                control2: CGPoint(x: w * 0.08, y: h * 0.82)
+            )
+            // Rounded bottom — matches bucket body
+            p.addCurve(
+                to: CGPoint(x: w * 0.90, y: h * 0.95),
+                control1: CGPoint(x: w * 0.25, y: h * 1.06),
+                control2: CGPoint(x: w * 0.75, y: h * 1.06)
+            )
+            // Right wall back up
+            p.addCurve(
+                to: CGPoint(x: topRight, y: fillTop),
+                control1: CGPoint(x: w * 0.92, y: h * 0.82),
+                control2: CGPoint(x: topRight + w * 0.01, y: fillTop + (h * 0.95 - fillTop) * 0.4)
+            )
+            p.closeSubpath()
+        }
+    }
+}
+
 // MARK: - Level Flag
+
+private struct FlagPennantShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            let w = rect.width, h = rect.height
+            p.move(to: CGPoint(x: 0, y: 0))
+            // Top edge — waves outward
+            p.addCurve(
+                to: CGPoint(x: w, y: h * 0.35),
+                control1: CGPoint(x: w * 0.35, y: -h * 0.08),
+                control2: CGPoint(x: w * 0.82, y: h * 0.12)
+            )
+            // Bottom edge — waves back with taper
+            p.addCurve(
+                to: CGPoint(x: 0, y: h),
+                control1: CGPoint(x: w * 0.88, y: h * 0.52),
+                control2: CGPoint(x: w * 0.35, y: h * 0.88)
+            )
+            p.closeSubpath()
+        }
+    }
+}
 
 private struct LevelFlag: View {
     let level: Int
@@ -3802,92 +3901,286 @@ private struct LevelFlag: View {
     }
 
     var body: some View {
-        Canvas { context, size in
-            let w = size.width
-            let h = size.height
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
 
-            let polePath = Path { p in
-                p.move(to: CGPoint(x: w * 0.5, y: 0))
-                p.addLine(to: CGPoint(x: w * 0.5, y: h))
-            }
-            context.stroke(polePath, with: .color(Color.white.opacity(0.4)), lineWidth: 1.5)
+            // Snow mound base
+            SnowMoundBaseShape()
+                .fill(Color(hex: "D8E8F4"))
+                .frame(width: w * 0.70, height: h * 0.12)
+                .position(x: w * 0.5, y: h * 0.92)
 
-            let flagPath = Path { p in
-                p.move(to: CGPoint(x: w * 0.5, y: h * 0.05))
-                p.addLine(to: CGPoint(x: w, y: h * 0.15))
-                p.addLine(to: CGPoint(x: w * 0.5, y: h * 0.3))
-                p.closeSubpath()
-            }
-            context.fill(flagPath, with: .color(flagColor.opacity(0.7)))
-            context.stroke(flagPath, with: .color(flagColor.opacity(0.9)), lineWidth: 0.5)
+            // Pole
+            RoundedRectangle(cornerRadius: 1)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: "C0C0C0"), Color(hex: "808080")],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: w * 0.08, height: h * 0.92)
+                .position(x: w * 0.5, y: h * 0.46)
 
-            let text = Text("\(level)").font(.system(size: 7, weight: .bold, design: .rounded)).foregroundColor(.white)
-            context.draw(
-                context.resolve(text),
-                at: CGPoint(x: w * 0.72, y: h * 0.17)
+            // Pole ball top
+            Circle()
+                .fill(Color(hex: "D0D0D0"))
+                .frame(width: w * 0.16, height: w * 0.16)
+                .position(x: w * 0.5, y: h * 0.02)
+
+            // Flag pennant
+            FlagPennantShape()
+                .fill(
+                    LinearGradient(
+                        colors: [flagColor, flagColor.opacity(0.8)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: w * 0.42, height: h * 0.24)
+                .position(x: w * 0.75, y: h * 0.18)
+
+            FlagPennantShape()
+                .stroke(flagColor, lineWidth: 0.8)
+                .frame(width: w * 0.42, height: h * 0.24)
+                .position(x: w * 0.75, y: h * 0.18)
+
+            // Level number
+            Text("\(level)")
+                .font(.system(size: 10, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+                .position(x: w * 0.72, y: h * 0.18)
+        }
+    }
+}
+
+/// Flat snow mound base for flag pole.
+private struct SnowMoundBaseShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            let w = rect.width, h = rect.height
+            p.move(to: CGPoint(x: 0, y: h))
+            // Smooth symmetrical mound
+            p.addCurve(
+                to: CGPoint(x: w, y: h),
+                control1: CGPoint(x: w * 0.12, y: -h * 0.08),
+                control2: CGPoint(x: w * 0.88, y: -h * 0.08)
             )
-
-            let basePath = Circle().path(in: CGRect(x: w * 0.35, y: h - 4, width: w * 0.3, height: 4))
-            context.fill(basePath, with: .color(Color.white.opacity(0.15)))
+            p.closeSubpath()
         }
     }
 }
 
 // MARK: - Cliff Lantern
 
+private struct LanternCapShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            let w = rect.width, h = rect.height
+            p.move(to: CGPoint(x: 0, y: h))
+            // Left edge — slight outward bow
+            p.addCurve(
+                to: CGPoint(x: w * 0.2, y: 0),
+                control1: CGPoint(x: w * 0.02, y: h * 0.6),
+                control2: CGPoint(x: w * 0.12, y: h * 0.1)
+            )
+            // Top — gentle crown curve
+            p.addCurve(
+                to: CGPoint(x: w * 0.8, y: 0),
+                control1: CGPoint(x: w * 0.35, y: -h * 0.08),
+                control2: CGPoint(x: w * 0.65, y: -h * 0.08)
+            )
+            // Right edge — slight outward bow
+            p.addCurve(
+                to: CGPoint(x: w, y: h),
+                control1: CGPoint(x: w * 0.88, y: h * 0.1),
+                control2: CGPoint(x: w * 0.98, y: h * 0.6)
+            )
+            p.closeSubpath()
+        }
+    }
+}
+
+private struct LanternBaseShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            let w = rect.width, h = rect.height
+            p.move(to: CGPoint(x: 0, y: 0))
+            // Top edge
+            p.addCurve(
+                to: CGPoint(x: w, y: 0),
+                control1: CGPoint(x: w * 0.33, y: -h * 0.06),
+                control2: CGPoint(x: w * 0.66, y: -h * 0.06)
+            )
+            // Right side — tapers inward
+            p.addCurve(
+                to: CGPoint(x: w * 0.9, y: h),
+                control1: CGPoint(x: w * 0.98, y: h * 0.35),
+                control2: CGPoint(x: w * 0.94, y: h * 0.7)
+            )
+            // Bottom
+            p.addCurve(
+                to: CGPoint(x: w * 0.1, y: h),
+                control1: CGPoint(x: w * 0.66, y: h * 1.05),
+                control2: CGPoint(x: w * 0.33, y: h * 1.05)
+            )
+            // Left side
+            p.addCurve(
+                to: CGPoint(x: 0, y: 0),
+                control1: CGPoint(x: w * 0.06, y: h * 0.7),
+                control2: CGPoint(x: w * 0.02, y: h * 0.35)
+            )
+        }
+    }
+}
+
+private struct LanternHookShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            p.addArc(
+                center: CGPoint(x: rect.width * 0.5, y: rect.height * 0.5),
+                radius: rect.width * 0.35,
+                startAngle: .degrees(190),
+                endAngle: .degrees(-10),
+                clockwise: false
+            )
+        }
+    }
+}
+
+private struct LanternFlameShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            let w = rect.width, h = rect.height
+            let cx = w * 0.5
+            // Tip
+            p.move(to: CGPoint(x: cx, y: 0))
+            // Right side — bulge then taper
+            p.addCurve(
+                to: CGPoint(x: cx + w * 0.3, y: h * 0.5),
+                control1: CGPoint(x: cx + w * 0.04, y: h * 0.04),
+                control2: CGPoint(x: cx + w * 0.42, y: h * 0.2)
+            )
+            // Bottom arc — smooth rounded base
+            p.addCurve(
+                to: CGPoint(x: cx - w * 0.3, y: h * 0.5),
+                control1: CGPoint(x: cx + w * 0.18, y: h * 0.78),
+                control2: CGPoint(x: cx - w * 0.18, y: h * 0.78)
+            )
+            // Left side — back to tip
+            p.addCurve(
+                to: CGPoint(x: cx, y: 0),
+                control1: CGPoint(x: cx - w * 0.42, y: h * 0.2),
+                control2: CGPoint(x: cx - w * 0.04, y: h * 0.04)
+            )
+        }
+    }
+}
+
 private struct CliffLantern: View {
     let time: AntarcticTimeOfDay
 
+    private var isLit: Bool {
+        time == .night || time == .dusk
+    }
+
     private var glowColor: Color {
-        time == .night ? Color(hex: "FFB800").opacity(0.6) : Color(hex: "FFD080").opacity(0.4)
+        isLit ? Color(hex: "FFB800") : Color(hex: "FFD080")
     }
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [glowColor, glowColor.opacity(0.1), .clear],
-                        center: .center,
-                        startRadius: 2,
-                        endRadius: 18
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+
+            // Ambient glow
+            if isLit {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                glowColor.opacity(0.5),
+                                glowColor.opacity(0.2),
+                                glowColor.opacity(0.05),
+                                .clear,
+                            ],
+                            center: .center,
+                            startRadius: 3,
+                            endRadius: 28
+                        )
                     )
-                )
-                .frame(width: 36, height: 36)
-
-            Canvas { context, size in
-                let w = size.width
-                let h = size.height
-
-                let bodyRect = CGRect(x: w * 0.25, y: h * 0.3, width: w * 0.5, height: h * 0.5)
-                context.fill(
-                    RoundedRectangle(cornerRadius: 2).path(in: bodyRect),
-                    with: .color(Color(hex: "8B6914").opacity(0.6))
-                )
-
-                let glassRect = CGRect(x: w * 0.3, y: h * 0.35, width: w * 0.4, height: h * 0.4)
-                context.fill(
-                    RoundedRectangle(cornerRadius: 1).path(in: glassRect),
-                    with: .color(Color(hex: "FFD060").opacity(0.7))
-                )
-
-                let capRect = CGRect(x: w * 0.2, y: h * 0.25, width: w * 0.6, height: h * 0.08)
-                context.fill(
-                    RoundedRectangle(cornerRadius: 1).path(in: capRect),
-                    with: .color(Color(hex: "666666").opacity(0.5))
-                )
-
-                let handlePath = Path { p in
-                    p.addArc(
-                        center: CGPoint(x: w / 2, y: h * 0.25),
-                        radius: w * 0.2,
-                        startAngle: .degrees(180),
-                        endAngle: .degrees(0),
-                        clockwise: false
-                    )
-                }
-                context.stroke(handlePath, with: .color(Color(hex: "666666").opacity(0.4)), lineWidth: 0.8)
+                    .frame(width: 56, height: 56)
+                    .position(x: w * 0.5, y: h * 0.45)
             }
+
+            // Hook
+            LanternHookShape()
+                .stroke(Color(hex: "777777"), lineWidth: 1.5)
+                .frame(width: w * 0.5, height: h * 0.18)
+                .position(x: w * 0.5, y: h * 0.12)
+
+            // Cap
+            LanternCapShape()
+                .fill(Color(hex: "555555"))
+                .frame(width: w * 0.56, height: h * 0.08)
+                .position(x: w * 0.5, y: h * 0.24)
+
+            // Chimney vent
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color(hex: "444444"))
+                .frame(width: w * 0.16, height: h * 0.06)
+                .position(x: w * 0.5, y: h * 0.19)
+
+            // Glass housing body
+            RoundedRectangle(cornerRadius: 3)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: "8B6914"), Color(hex: "6B4A0A")],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: w * 0.56, height: h * 0.48)
+                .position(x: w * 0.5, y: h * 0.50)
+
+            // Glass pane
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isLit ? Color(hex: "FFD060") : Color(hex: "A0B8CC"))
+                .frame(width: w * 0.46, height: h * 0.40)
+                .position(x: w * 0.5, y: h * 0.50)
+
+            // Candle flame
+            if isLit {
+                LanternFlameShape()
+                    .fill(
+                        LinearGradient(
+                            colors: [.white, Color(hex: "FFE066"), Color(hex: "FF8C00")],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 8, height: 12)
+                    .position(x: w * 0.5, y: h * 0.42)
+            }
+
+            // Vertical metal frame line
+            Rectangle()
+                .fill(Color(hex: "666666").opacity(0.5))
+                .frame(width: 0.8, height: h * 0.48)
+                .position(x: w * 0.5, y: h * 0.50)
+
+            // Bottom base
+            LanternBaseShape()
+                .fill(Color(hex: "666666"))
+                .frame(width: w * 0.64, height: h * 0.08)
+                .position(x: w * 0.5, y: h * 0.78)
+
+            // Stand
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color(hex: "555555"))
+                .frame(width: w * 0.40, height: h * 0.08)
+                .position(x: w * 0.5, y: h * 0.86)
         }
     }
 }

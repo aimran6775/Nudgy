@@ -4,7 +4,7 @@
 //
 //  Inline interactive fish tank for the You page hero.
 //  Vector-rendered fish (AnimatedFishView) swim with sin/cos physics
-//  and animated tail wag. TimelineView drives smooth 60fps updates.
+//  and animated tail wag. TimelineView drives smooth 30fps updates.
 //
 //  Environment: light rays, swaying seaweed, bubbles, caustics, sand.
 //  Interactions: tap water → ripple + scatter, tap fish → info,
@@ -88,6 +88,7 @@ struct AquariumTankView: View {
     @State private var bubbles: [BubbleParticle] = []
     @State private var foodParticles: [FoodParticle] = []
     @State private var feedsAvailable: Int = 0
+    @State private var tankSize: CGSize = .init(width: 350, height: 220)
     @State private var seaweeds: [SeaweedPatch] = []
     @State private var rewardService = RewardService.shared
     @State private var showDecorationShop = false
@@ -103,11 +104,10 @@ struct AquariumTankView: View {
     }
 
     var body: some View {
-        SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
+        GeometryReader { geo in
+        SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: reduceMotion)) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
-
-            GeometryReader { geo in
-                let size = geo.size
+            let size = tankSize
 
                 ZStack {
                     // 1. Deep water gradient
@@ -171,8 +171,11 @@ struct AquariumTankView: View {
                         feedBonusToast
                     }
                 }
-            }
         }
+        .onAppear { tankSize = geo.size }
+        .onChange(of: geo.size) { _, newSize in tankSize = newSize }
+        } // end GeometryReader
+        .drawingGroup()  // Flatten all fish, bubbles, caustics into one GPU texture
         .frame(height: height)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .contentShape(RoundedRectangle(cornerRadius: 20))
@@ -606,7 +609,8 @@ struct AquariumTankView: View {
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.9))
             ripples.removeAll { $0.id == ripple.id }
         }
 
@@ -633,16 +637,16 @@ struct AquariumTankView: View {
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.2))
             for i in tankFish.indices {
                 tankFish[i].isScattering = false
                 withAnimation(.easeInOut(duration: 1.5)) {
                     tankFish[i].scatterOffset = .zero
                 }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                isScattered = false
-            }
+            try? await Task.sleep(for: .seconds(1.5))
+            isScattered = false
         }
     }
 
@@ -869,13 +873,13 @@ struct AquariumTankView: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 feedBonusOpacity = 1
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.8))
                 withAnimation(.easeOut(duration: 0.5)) {
                     feedBonusOpacity = 0
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    feedBonusText = nil
-                }
+                try? await Task.sleep(for: .seconds(0.6))
+                feedBonusText = nil
             }
             HapticService.shared.swipeDone()
         }
@@ -895,6 +899,7 @@ struct AquariumTankView: View {
         Task { @MainActor in
             for _ in 0..<60 {
                 try? await Task.sleep(for: .seconds(1.0 / 30.0))
+                guard !Task.isCancelled else { break }
 
                 for i in foodParticles.indices {
                     guard particleIDs.contains(foodParticles[i].id),
@@ -946,7 +951,8 @@ struct AquariumTankView: View {
                 ripples[idx].opacity = 0
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.7))
             ripples.removeAll { $0.id == ripple.id }
         }
     }

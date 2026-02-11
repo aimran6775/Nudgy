@@ -427,6 +427,9 @@ final class NudgyTaskExtractor {
         else if lower.contains("email ") { actionType = "EMAIL" }
         else { actionType = "" }
         
+        // Extract contact name from "call/text/email/message <Name>" patterns
+        let contactName = fallbackExtractContactName(from: lower, original: trimmed)
+        
         // Simple urgency detection
         let priority: String
         if lower.contains("urgent") || lower.contains("asap") || lower.contains("important") || lower.contains("deadline") {
@@ -437,15 +440,82 @@ final class NudgyTaskExtractor {
             priority = "medium"
         }
         
+        // Simple due date detection
+        let dueDateString = fallbackExtractDueDate(from: lower)
+        
         return ExtractedTask(
             content: trimmed,
             emoji: "doc.text.fill",
             actionType: actionType,
-            contactName: "",
+            contactName: contactName,
             actionTarget: "",
             isActionable: true,
             priority: priority,
-            dueDateString: ""
+            dueDateString: dueDateString
         )
+    }
+    
+    /// Regex-extract a contact name from patterns like "call mom", "text Dr. Smith about dinner",
+    /// "email sarah the report". Returns empty string if no match.
+    private func fallbackExtractContactName(from lower: String, original: String) -> String {
+        // Match: (call|text|message|email) <name> [about|regarding|the|to|re|that|when|by|...]
+        // Name = 1-3 capitalized words, or common relationship words
+        let patterns = [
+            // "call mom", "text dr. smith about dinner"
+            #"(?:call|text|message|email)\s+([a-z]+(?:\.\s*)?(?:\s+[a-z]+){0,2})(?:\s+(?:about|regarding|the|to|re|that|when|by|for|and|tomorrow|today|asap|urgent)\b|$)"#,
+        ]
+        
+        // Common relationship words that are valid contact names
+        let relationshipWords: Set<String> = [
+            "mom", "mum", "dad", "mother", "father", "sis", "bro", "brother", "sister",
+            "grandma", "grandpa", "nana", "papa", "aunt", "uncle", "cousin",
+            "wife", "husband", "partner", "babe", "honey",
+            "boss", "manager", "landlord", "doctor", "dentist", "therapist"
+        ]
+        
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+            let range = NSRange(lower.startIndex..., in: lower)
+            if let match = regex.firstMatch(in: lower, options: [], range: range),
+               match.numberOfRanges > 1,
+               let nameRange = Range(match.range(at: 1), in: lower) {
+                let rawName = String(lower[nameRange]).trimmingCharacters(in: .whitespaces)
+                
+                // Validate: must be a known relationship word OR have at least 2 chars
+                let words = rawName.split(separator: " ").map(String.init)
+                guard let firstName = words.first, firstName.count >= 2 else { continue }
+                
+                // Skip obvious non-names (prepositions, articles, etc.)
+                let stopWords: Set<String> = ["the", "a", "an", "my", "our", "his", "her", "their", "some", "this", "that", "it"]
+                if stopWords.contains(firstName) { continue }
+                
+                // If it's a known relationship word, return as-is
+                if relationshipWords.contains(firstName) {
+                    return rawName
+                }
+                
+                // Capitalize from original text if possible, else capitalize words
+                let capitalizedName = words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+                return capitalizedName
+            }
+        }
+        
+        return ""
+    }
+    
+    /// Extract simple due date hints from text. Returns relative string or empty.
+    private func fallbackExtractDueDate(from lower: String) -> String {
+        if lower.contains("today") || lower.contains("tonight") { return "today" }
+        if lower.contains("tomorrow") { return "tomorrow" }
+        if lower.contains("next week") { return "next week" }
+        if lower.contains("this week") { return "this week" }
+        if lower.contains("monday") { return "monday" }
+        if lower.contains("tuesday") { return "tuesday" }
+        if lower.contains("wednesday") { return "wednesday" }
+        if lower.contains("thursday") { return "thursday" }
+        if lower.contains("friday") { return "friday" }
+        if lower.contains("saturday") { return "saturday" }
+        if lower.contains("sunday") { return "sunday" }
+        return ""
     }
 }

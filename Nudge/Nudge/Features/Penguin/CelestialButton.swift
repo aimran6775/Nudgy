@@ -483,11 +483,11 @@ struct CelestialExpandedOverlay: View {
             .safeAreaPadding(.top, DesignTokens.spacingSM)
         }
         .ignoresSafeArea()
-        .gesture(
-            DragGesture(minimumDistance: 50)
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 60)
                 .onEnded { value in
                     // Swipe down to dismiss
-                    if value.translation.height > 100 {
+                    if value.translation.height > 80 {
                         dismiss()
                     }
                 }
@@ -648,21 +648,26 @@ struct CelestialExpandedOverlay: View {
 
             Spacer()
 
-            // Close button — glass circle, tap handled by onTapGesture
-            // (.interactive() on glassEffect swallows Button taps, so we
-            // keep it for the visual and use onTapGesture instead)
-            Image(systemName: "xmark")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.85))
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(.ultraThinMaterial))
-                .glassEffect(.regular.interactive(), in: .circle)
-                .onTapGesture { dismiss() }
-                .nudgeAccessibility(
-                    label: String(localized: "Close"),
-                    hint: String(localized: "Tap to dismiss inventory"),
-                    traits: .isButton
-                )
+            // Close button — plain Button, no glassEffect (it swallows touches)
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .shadow(color: .white.opacity(0.08), radius: 4)
+                    )
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            .nudgeAccessibility(
+                label: String(localized: "Close"),
+                hint: String(localized: "Tap to dismiss inventory"),
+                traits: .isButton
+            )
         }
     }
 
@@ -705,7 +710,7 @@ struct CelestialExpandedOverlay: View {
                 }
             }
 
-            LottieNudgyView(
+            NudgySprite(
                 expression: penguinState.expression,
                 size: DesignTokens.penguinSizeLarge,
                 accentColor: penguinState.accentColor

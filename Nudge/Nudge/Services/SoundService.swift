@@ -20,13 +20,18 @@ final class SoundService {
     
     private init() {}
     
-    // MARK: - Sound Events (from PRD Sound Design)
+    // MARK: - Sound Events (Antarctic Sound Palette)
     
     enum SoundEvent: String, CaseIterable {
-        case brainDumpStart = "brain-dump-start"   // Soft "pop" — bubble appearing (0.2s)
-        case taskDone       = "task-done"           // Gentle chime — C5→E5 (0.3s)
-        case allClear       = "all-clear"           // Warm chord — C4-E4-G4 (0.5s)
-        case nudgeKnock     = "nudge-knock"         // Knock knock pattern (0.5s)
+        case brainDumpStart = "brain-dump-start"   // Crystalline ice bubble (0.25s)
+        case taskDone       = "task-done"           // Ascending ice chime — C5→E5→G5 (0.4s)
+        case allClear       = "all-clear"           // Warm harmonic chord with shimmer (0.6s)
+        case nudgeKnock     = "nudge-knock"         // Soft double knock on ice (0.5s)
+        case tabSwitch      = "tab-switch"          // Subtle ice tap (0.12s)
+        case snooze         = "snooze"              // Soft descending crystal — going to sleep (0.35s)
+        case fishCaught     = "fish-caught"         // Underwater blub + sparkle (0.4s)
+        case micStart       = "mic-start"           // Gentle activation tone (0.15s)
+        case sendMessage    = "send-message"        // Soft whoosh-up (0.2s)
     }
     
     // MARK: - Setup
@@ -68,6 +73,11 @@ final class SoundService {
     func playTaskDone()       { play(.taskDone) }
     func playAllClear()       { play(.allClear) }
     func playNudgeKnock()     { play(.nudgeKnock) }
+    func playTabSwitch()      { play(.tabSwitch) }
+    func playSnooze()         { play(.snooze) }
+    func playFishCaught()     { play(.fishCaught) }
+    func playMicStart()       { play(.micStart) }
+    func playSendMessage()    { play(.sendMessage) }
     
     // MARK: - Cleanup
     

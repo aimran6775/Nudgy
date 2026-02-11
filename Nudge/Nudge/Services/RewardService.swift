@@ -102,6 +102,11 @@ final class RewardService {
     /// The most recent fish catch (for animation).
     private(set) var lastFishCatch: FishCatch? = nil
     
+    /// Clear the last fish catch after it's been consumed by the ceremony overlay.
+    func clearLastFishCatch() {
+        lastFishCatch = nil
+    }
+    
     /// Unlocked tank decoration IDs.
     private(set) var unlockedDecorations: Set<String> = []
     
@@ -367,22 +372,23 @@ final class RewardService {
     }
     
     /// Sync observable state from the wardrobe model.
+    /// Only writes properties that actually changed to avoid unnecessary view invalidations.
     private func syncState(from wardrobe: NudgyWardrobe) {
-        snowflakes = wardrobe.snowflakes
-        equippedAccessories = wardrobe.equippedAccessories
-        unlockedAccessories = wardrobe.unlockedAccessories
-        unlockedProps = wardrobe.unlockedProps
-        currentStreak = wardrobe.currentStreak
-        level = wardrobe.level
-        levelProgress = wardrobe.levelProgress
-        tasksCompletedToday = wardrobe.tasksCompletedToday
-        environmentMood = wardrobe.environmentMood
-        fishCatches = wardrobe.fishCatches
-        unlockedDecorations = wardrobe.unlockedDecorations
-        placedDecorations = wardrobe.placedDecorations
-        fishFedToday = wardrobe.fishFedToday
-        feedingStreak = wardrobe.feedingStreak
-        longestFeedingStreak = wardrobe.longestFeedingStreak
+        if snowflakes != wardrobe.snowflakes { snowflakes = wardrobe.snowflakes }
+        if equippedAccessories != wardrobe.equippedAccessories { equippedAccessories = wardrobe.equippedAccessories }
+        if unlockedAccessories != wardrobe.unlockedAccessories { unlockedAccessories = wardrobe.unlockedAccessories }
+        if unlockedProps != wardrobe.unlockedProps { unlockedProps = wardrobe.unlockedProps }
+        if currentStreak != wardrobe.currentStreak { currentStreak = wardrobe.currentStreak }
+        if level != wardrobe.level { level = wardrobe.level }
+        if levelProgress != wardrobe.levelProgress { levelProgress = wardrobe.levelProgress }
+        if tasksCompletedToday != wardrobe.tasksCompletedToday { tasksCompletedToday = wardrobe.tasksCompletedToday }
+        if environmentMood != wardrobe.environmentMood { environmentMood = wardrobe.environmentMood }
+        if fishCatches != wardrobe.fishCatches { fishCatches = wardrobe.fishCatches }
+        if unlockedDecorations != wardrobe.unlockedDecorations { unlockedDecorations = wardrobe.unlockedDecorations }
+        if placedDecorations != wardrobe.placedDecorations { placedDecorations = wardrobe.placedDecorations }
+        if fishFedToday != wardrobe.fishFedToday { fishFedToday = wardrobe.fishFedToday }
+        if feedingStreak != wardrobe.feedingStreak { feedingStreak = wardrobe.feedingStreak }
+        if longestFeedingStreak != wardrobe.longestFeedingStreak { longestFeedingStreak = wardrobe.longestFeedingStreak }
         
         // Regenerate challenges if new day
         regenerateChallengesIfNeeded()
@@ -606,11 +612,4 @@ final class RewardService {
     }
     
     /// Award bonus fish for completed challenges. Call after showing challenge-complete UI.
-    func claimChallengeRewards(context: ModelContext) {
-        let bonus = dailyChallenges.filter(\.isCompleted).reduce(0) { $0 + $1.bonusFish }
-        guard bonus > 0 else { return }
-        
-        let wardrobe = fetchOrCreateWardrobe(context: context)
-        // Note: challenge rewards are auto-credited; this is for explicit claim flow if needed
-    }
 }

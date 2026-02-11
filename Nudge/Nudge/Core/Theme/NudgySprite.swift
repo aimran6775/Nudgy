@@ -234,7 +234,7 @@ struct NudgySprite: View {
                 usePlaceholder: !useSpriteArt
             )
             
-            // The penguin character
+            // The penguin character — PenguinMascot (custom bezier) via SpriteAnimator
             SpriteAnimator(
                 animation: SpriteAnimation.from(expression: expression),
                 size: size,

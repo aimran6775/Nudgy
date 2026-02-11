@@ -44,6 +44,7 @@ struct CatchCeremonyOverlay: View {
     @State private var overlayOpacity: Double = 0
     @State private var particles: [CeremonyParticle] = []
     @State private var snowflakeScale: CGFloat = 0
+    @State private var viewSize: CGSize = .init(width: 390, height: 844)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum CeremonyPhase {
@@ -51,6 +52,7 @@ struct CatchCeremonyOverlay: View {
     }
 
     var body: some View {
+        GeometryReader { geo in
         SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: phase == .done || reduceMotion)) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
 
@@ -83,6 +85,7 @@ struct CatchCeremonyOverlay: View {
             }
         }
         .onAppear {
+            viewSize = geo.size
             if reduceMotion {
                 phase = .done
                 overlayOpacity = 1
@@ -97,6 +100,7 @@ struct CatchCeremonyOverlay: View {
             label: String(localized: "You caught a \(fishCatch.species.label)!"),
             hint: String(localized: "Tap to dismiss")
         )
+        } // end GeometryReader
     }
 
     // MARK: - Fishing Line
@@ -133,7 +137,7 @@ struct CatchCeremonyOverlay: View {
         case .casting: yOffset = 60 + lineLength
         case .hooked: yOffset = 60 + lineLength
         case .reeling: yOffset = 60 + lineLength * (1 - reelProgress)
-        case .splash, .done: yOffset = UIScreen.main.bounds.height * 0.5
+        case .splash, .done: yOffset = viewSize.height * 0.5
         }
 
         // Tail wag while hooked/reeling — faster wag when fighting
@@ -153,7 +157,7 @@ struct CatchCeremonyOverlay: View {
         )
         .rotationEffect(.degrees(fishWiggle))
         .scaleEffect(fishScale)
-        .offset(y: yOffset - UIScreen.main.bounds.height * 0.5)
+        .offset(y: yOffset - viewSize.height * 0.5)
         .opacity(phase == .done ? 0 : overlayOpacity)
     }
 
@@ -202,7 +206,7 @@ struct CatchCeremonyOverlay: View {
                 )
                 .frame(width: 90 * splashScale, height: 90 * splashScale)
         }
-        .offset(y: UIScreen.main.bounds.height * 0.15)
+        .offset(y: viewSize.height * 0.15)
     }
 
     // MARK: - Reward Label
@@ -245,26 +249,25 @@ struct CatchCeremonyOverlay: View {
             lineLength = 180
         }
 
-        // Phase 2: Fish appears + wiggles
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+        Task { @MainActor in
+            // Phase 2: Fish appears + wiggles
+            try? await Task.sleep(for: .seconds(0.7))
             phase = .hooked
             withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                 fishScale = 1.0
             }
             HapticService.shared.actionButtonTap()
             startWiggle()
-        }
 
-        // Phase 3: Reel in
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            // Phase 3: Reel in
+            try? await Task.sleep(for: .seconds(0.8))
             phase = .reeling
             withAnimation(.easeInOut(duration: 0.8)) {
                 reelProgress = 1.0
             }
-        }
 
-        // Phase 4: Splash + particles
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) {
+            // Phase 4: Splash + particles
+            try? await Task.sleep(for: .seconds(0.8))
             phase = .splash
             HapticService.shared.swipeDone()
 
@@ -299,8 +302,8 @@ struct CatchCeremonyOverlay: View {
 
     private func spawnSplashParticles() {
         let center = CGPoint(
-            x: UIScreen.main.bounds.width * 0.5,
-            y: UIScreen.main.bounds.height * 0.65
+            x: viewSize.width * 0.5,
+            y: viewSize.height * 0.65
         )
         let fishColor = fishCatch.species.fishColor
 
@@ -399,7 +402,8 @@ struct CatchCeremonyOverlay: View {
     }
 
     private func autoDismissAfterDelay() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3.5))
             dismiss()
         }
     }
@@ -408,7 +412,8 @@ struct CatchCeremonyOverlay: View {
         withAnimation(.easeOut(duration: 0.25)) {
             overlayOpacity = 0
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.3))
             onDismiss()
         }
     }

@@ -95,7 +95,8 @@ struct CompletionParticles: View {
                 withAnimation(.easeOut(duration: 0.3)) {
                     showCheck = true
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(0.8))
                     withAnimation(.easeOut(duration: 0.2)) {
                         showCheck = false
                     }
@@ -105,12 +106,12 @@ struct CompletionParticles: View {
                 showCheck = true
                 animating = true
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(0.6))
                     withAnimation(.easeOut(duration: 0.15)) {
                         showCheck = false
                     }
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    try? await Task.sleep(for: .seconds(0.2))
                     animating = false
                     isActive = false
                 }

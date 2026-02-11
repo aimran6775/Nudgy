@@ -380,6 +380,7 @@ struct CardView: View {
     
     private func commitSnooze() {
         HapticService.shared.swipeSnooze()
+        SoundService.shared.playSnooze()
         
         let animation = reduceMotion
             ? AnimationConstants.reducedMotionFade

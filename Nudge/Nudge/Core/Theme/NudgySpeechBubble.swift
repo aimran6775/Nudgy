@@ -203,14 +203,17 @@ struct NudgySpeechBubble: View {
             .padding(.top, DesignTokens.spacingMD)
             .padding(.bottom, DesignTokens.spacingMD + 8) // Extra for tail
             .frame(maxWidth: maxWidth)
-            .background(
+            .background {
                 SpeechBubbleShape(tailPosition: 0.5)
-                    .fill(style.backgroundColor)
-                    .overlay(
-                        SpeechBubbleShape(tailPosition: 0.5)
-                            .stroke(style.borderColor, lineWidth: 0.5)
+                    .fill(
+                        LinearGradient(
+                            colors: [style.backgroundColor.opacity(0.5), style.backgroundColor.opacity(0.2)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
                     )
-            )
+            }
+            .glassEffect(.regular.interactive(), in: SpeechBubbleShape(tailPosition: 0.5))
             .scaleEffect(appeared ? 1.0 : 0.3)
             .opacity(appeared ? 1.0 : 0)
             .onAppear {

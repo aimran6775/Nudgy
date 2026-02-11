@@ -77,7 +77,7 @@ struct TaskBreakdownView: View {
         VStack(spacing: DesignTokens.spacingLG) {
             Spacer()
             
-            LottieNudgyView(
+            NudgySprite(
                 expression: .thinking,
                 size: DesignTokens.penguinSizeLarge,
                 accentColor: DesignTokens.accentActive
@@ -263,7 +263,7 @@ struct TaskBreakdownView: View {
         VStack(spacing: DesignTokens.spacingLG) {
             Spacer()
             
-            LottieNudgyView(
+            NudgySprite(
                 expression: .confused,
                 size: DesignTokens.penguinSizeLarge,
                 accentColor: DesignTokens.accentOverdue

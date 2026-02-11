@@ -69,6 +69,8 @@ struct SpriteAnimation: Equatable {
         case .nudging:      return .talking      // Reuse talking for nudging
         case .confused:     return .thinking     // Reuse thinking for confused
         case .typing:       return .idle         // Reuse idle for typing
+        case .shy:          return .idle         // Reuse idle for shy
+        case .mischievous:  return .idle         // Reuse idle for mischievous
         }
     }
 }

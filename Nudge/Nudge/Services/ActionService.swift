@@ -114,6 +114,7 @@ enum ActionService {
         case .text:
             // Text messages are handled via MessageComposeView (UIViewControllerRepresentable)
             // Post a notification so the view layer can present the compose sheet
+            SoundService.shared.playSendMessage()
             NotificationCenter.default.post(
                 name: .nudgeComposeMessage,
                 object: nil,
@@ -217,6 +218,9 @@ extension Notification.Name {
     
     /// Posted when fish are pending for the penguin tab to "munch" (Option C)
     static let nudgePendingFish = Notification.Name("nudgePendingFish")
+    
+    /// Posted to switch to the Nudges tab (e.g. after task creation)
+    static let nudgeSwitchToNudges = Notification.Name("nudgeSwitchToNudges")
 }
 
 // MARK: - Message Compose View (UIViewControllerRepresentable)
